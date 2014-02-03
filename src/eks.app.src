@@ -1,0 +1,18 @@
+%%-*- mode: erlang -*-
+{application, eks,
+ [
+  {description, "eks"},
+  {vsn, "1"},
+  {modules, []},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib,
+                  inets,
+                  crypto,
+                  mochiweb,
+                  webmachine
+                 ]},
+  {mod, { eks_app, []}},
+  {env, []}
+ ]}.
