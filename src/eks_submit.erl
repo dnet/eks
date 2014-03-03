@@ -4,8 +4,10 @@
 -include_lib("webmachine/include/webmachine.hrl").
 
 -define(OLD_PACKET_FORMAT, 2).
+-define(SIGNATURE_PACKET, 2).
 -define(PUBKEY_PACKET, 6).
 -define(UID_PACKET, 13).
+-define(SUBKEY_PACKET, 14).
 -define(PGP_VERSION, 4).
 
 -define(CRC24_INIT, 16#B704CE).
@@ -16,6 +18,14 @@
 -define(PK_ALGO_RSA_S, 3).
 -define(PK_ALGO_ELGAMAL, 16).
 -define(PK_ALGO_DSA, 17).
+
+-define(HASH_ALGO_MD5, 1).
+-define(HASH_ALGO_SHA1, 2).
+-define(HASH_ALGO_RIPEMD160, 3).
+-define(HASH_ALGO_SHA256, 8).
+-define(HASH_ALGO_SHA384, 9).
+-define(HASH_ALGO_SHA512, 10).
+-define(HASH_ALGO_SHA224, 11).
 
 init([]) -> {ok, undefined}.
 
@@ -55,11 +65,73 @@ decode_stream(<<?OLD_PACKET_FORMAT:2/integer-big, Tag:4/integer-big,
 decode_stream(Data) ->
 	io:format("~p\n", [mochihex:to_hex(Data)]).
 
-decode_packet(?PUBKEY_PACKET, <<?PGP_VERSION, Timestamp:32/integer-big, Algorithm, KeyRest/binary>>) ->
+decode_packet(?SIGNATURE_PACKET, <<?PGP_VERSION, SigType, PubKeyAlgo, HashAlgo,
+								   HashedLen:16/integer-big, HashedData:HashedLen/binary,
+								   UnhashedLen:16/integer-big, UnhashedData:UnhashedLen/binary,
+								   HashLeft16:2/binary, Signature/binary>>) ->
+	Expected = crypto:hash(pgp_to_crypto_hash_algo(HashAlgo), HashedData), %% TODO
+	io:format("Hashed: ~s\n", [mochihex:to_hex(HashedData)]),
+	decode_signed_subpackets(HashedData),
+	io:format("SIGNATURE: ~p\n", [{SigType, PubKeyAlgo, HashAlgo, HashedLen, UnhashedLen,
+								   HashLeft16}]);
+decode_packet(Tag, <<?PGP_VERSION, Timestamp:32/integer-big, Algorithm, KeyRest/binary>> = KeyData)
+  when Tag =:= ?PUBKEY_PACKET; Tag =:= ?SUBKEY_PACKET ->
 	Key = decode_pubkey_algo(Algorithm, KeyRest),
-	io:format("PUBKEY: ~p\n", [{Timestamp, Key}]);
+	Subject = <<16#99, (byte_size(KeyData)):16/integer-big, KeyData/binary>>,
+	KeyID = crypto:hash(sha, Subject),
+	io:format("PUBKEY: ~p\n", [{Timestamp, Key, mochihex:to_hex(KeyID)}]);
 decode_packet(?UID_PACKET, UID) ->
 	io:format("UID: ~p\n", [UID]).
+
+decode_signed_subpackets(<<>>) -> ok;
+decode_signed_subpackets(<<Length, Payload:Length/binary, Rest/binary>>) when Length < 192 ->
+	decode_signed_subpacket(Payload),
+	decode_signed_subpackets(Rest);
+decode_signed_subpackets(<<LengthHigh, LengthLow, PayloadRest/binary>>) when LengthHigh < 255 ->
+	Length = ((LengthHigh - 192) bsl 8) bor LengthLow,
+	<<Payload:Length/binary, Rest/binary>> = PayloadRest,
+	decode_signed_subpacket(Payload),
+	decode_signed_subpackets(Rest);
+decode_signed_subpackets(<<255, Length:32/integer-big, Payload:Length/binary, Rest/binary>>) ->
+	decode_signed_subpacket(Payload),
+	decode_signed_subpackets(Rest).
+
+%% 2 = Signature Creation Time
+decode_signed_subpacket(<<2, Timestamp:32/integer-big>>) ->
+	io:format("Signature Creation Time: ~p\n", [Timestamp]);
+%% 9 = Key Expiration Time
+decode_signed_subpacket(<<9, Timestamp:32/integer-big>>) ->
+	io:format("Key Expiration Time: ~p\n", [Timestamp]);
+%% 11 = Preferred Symmetric Algorithms
+decode_signed_subpacket(<<11, Algorithms/binary>>) ->
+	io:format("Preferred Symmetric Algorithms: ~p\n", [Algorithms]);
+%% 21 = Preferred Hash Algorithms
+decode_signed_subpacket(<<21, Algorithms/binary>>) ->
+	io:format("Preferred Hash Algorithms: ~p\n", [Algorithms]);
+%% 22 = Preferred Compression Algorithms
+decode_signed_subpacket(<<22, Algorithms/binary>>) ->
+	io:format("Preferred Compression Algorithms: ~p\n", [Algorithms]);
+%% 23 = Key Server Preferences
+decode_signed_subpacket(<<23, NoModify:1/integer, _/bits>>) ->
+	io:format("Key Server Preferences: ~p\n", [{NoModify}]);
+%% 27 = Key Flags
+decode_signed_subpacket(<<27, SharedPrivKey:1/integer, _:2/integer, SplitPrivKey:1/integer,
+						  CanEncryptStorage:1/integer, CanEncryptComms:1/integer,
+						  CanSign:1/integer, CanCertify:1/integer, _/binary>>) ->
+	io:format("Key Flags: ~p\n", [{SharedPrivKey, SplitPrivKey, CanEncryptStorage,
+								   CanEncryptComms, CanSign, CanCertify}]);
+%% 30 = Features
+decode_signed_subpacket(<<30, _:7/integer, ModificationDetection:1/integer, _/binary>>) ->
+	io:format("Features: ~p\n", [{ModificationDetection}]);
+decode_signed_subpacket(<<Tag, _/binary>>) -> io:format("Ingored ~p\n", [Tag]).
+
+pgp_to_crypto_hash_algo(?HASH_ALGO_MD5) -> md5;
+pgp_to_crypto_hash_algo(?HASH_ALGO_SHA1) -> sha;
+pgp_to_crypto_hash_algo(?HASH_ALGO_RIPEMD160) -> ripemd160;
+pgp_to_crypto_hash_algo(?HASH_ALGO_SHA256) -> sha256;
+pgp_to_crypto_hash_algo(?HASH_ALGO_SHA384) -> sha384;
+pgp_to_crypto_hash_algo(?HASH_ALGO_SHA512) -> sha512;
+pgp_to_crypto_hash_algo(?HASH_ALGO_SHA224) -> sha224.
 
 decode_pubkey_algo(RSA, <<NLen:16/integer-big, NRest/binary>>)
   when RSA =:= ?PK_ALGO_RSA_ES; RSA =:= ?PK_ALGO_RSA_E; RSA =:= ?PK_ALGO_RSA_S ->
