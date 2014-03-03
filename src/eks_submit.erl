@@ -41,6 +41,7 @@ process_post(ReqData, State) ->
 	io:format("K: ~p\n", [Key]),
 	{true, ReqData, State}.
 
+decode_stream(Data) -> decode_packets(Data, []).
 decode_stream(Data, []) -> decode_stream(Data);
 decode_stream(Data, Opts) ->
 	case lists:delete(file, Opts) of
@@ -53,35 +54,38 @@ decode_stream(Data, Opts) ->
 			{ok, Contents} = file:read_file(Data),
 			decode_stream(Contents, NewOpts)
 	end.
-decode_stream(<<?OLD_PACKET_FORMAT:2/integer-big, Tag:4/integer-big,
-				LenBits:2/integer-big, Body/binary>>) ->
+decode_packets(<<?OLD_PACKET_FORMAT:2/integer-big, Tag:4/integer-big,
+				LenBits:2/integer-big, Body/binary>>, Context) ->
 	{PacketData, S2Rest} = case LenBits of
 		0 -> <<Length, Object:Length/binary, SRest/binary>> = Body, {Object, SRest};
 		1 -> <<Length:16/integer-big, Object:Length/binary, SRest/binary>> = Body, {Object, SRest};
 		2 -> <<Length:32/integer-big, Object:Length/binary, SRest/binary>> = Body, {Object, SRest}
 	end,
-	decode_packet(Tag, PacketData),
-	decode_stream(S2Rest);
-decode_stream(Data) ->
-	io:format("~p\n", [mochihex:to_hex(Data)]).
+	NewContext = decode_packet(Tag, PacketData, Context),
+	decode_packets(S2Rest, NewContext);
+decode_packets(Data, Context) ->
+	io:format("~p ~p\n", [mochihex:to_hex(Data), Context]).
 
 decode_packet(?SIGNATURE_PACKET, <<?PGP_VERSION, SigType, PubKeyAlgo, HashAlgo,
 								   HashedLen:16/integer-big, HashedData:HashedLen/binary,
 								   UnhashedLen:16/integer-big, UnhashedData:UnhashedLen/binary,
-								   HashLeft16:2/binary, Signature/binary>>) ->
+								   HashLeft16:2/binary, Signature/binary>>, Context) ->
 	Expected = crypto:hash(pgp_to_crypto_hash_algo(HashAlgo), HashedData), %% TODO
 	io:format("Hashed: ~s\n", [mochihex:to_hex(HashedData)]),
 	decode_signed_subpackets(HashedData),
 	io:format("SIGNATURE: ~p\n", [{SigType, PubKeyAlgo, HashAlgo, HashedLen, UnhashedLen,
-								   HashLeft16}]);
-decode_packet(Tag, <<?PGP_VERSION, Timestamp:32/integer-big, Algorithm, KeyRest/binary>> = KeyData)
+								   HashLeft16}]),
+	Context;
+decode_packet(Tag, <<?PGP_VERSION, Timestamp:32/integer-big, Algorithm, KeyRest/binary>> = KeyData, Context)
   when Tag =:= ?PUBKEY_PACKET; Tag =:= ?SUBKEY_PACKET ->
 	Key = decode_pubkey_algo(Algorithm, KeyRest),
 	Subject = <<16#99, (byte_size(KeyData)):16/integer-big, KeyData/binary>>,
 	KeyID = crypto:hash(sha, Subject),
-	io:format("PUBKEY: ~p\n", [{Timestamp, Key, mochihex:to_hex(KeyID)}]);
-decode_packet(?UID_PACKET, UID) ->
-	io:format("UID: ~p\n", [UID]).
+	io:format("PUBKEY: ~p\n", [{Timestamp, Key, mochihex:to_hex(KeyID)}]),
+	Context;
+decode_packet(?UID_PACKET, UID, Context) ->
+	io:format("UID: ~p\n", [UID]),
+	Context.
 
 decode_signed_subpackets(<<>>) -> ok;
 decode_signed_subpackets(<<Length, Payload:Length/binary, Rest/binary>>) when Length < 192 ->
