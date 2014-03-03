@@ -109,6 +109,9 @@ decode_signed_subpacket(<<9, Timestamp:32/integer-big>>) ->
 %% 11 = Preferred Symmetric Algorithms
 decode_signed_subpacket(<<11, Algorithms/binary>>) ->
 	io:format("Preferred Symmetric Algorithms: ~p\n", [Algorithms]);
+%% 16 = Issuer
+decode_signed_subpacket(<<16, Issuer:8/binary>>) ->
+	io:format("Issuer: ~p\n", [mochihex:to_hex(Issuer)]);
 %% 21 = Preferred Hash Algorithms
 decode_signed_subpacket(<<21, Algorithms/binary>>) ->
 	io:format("Preferred Hash Algorithms: ~p\n", [Algorithms]);
