@@ -1,9 +1,11 @@
 -module(eks_submit).
--export([init/1, allowed_methods/2, process_post/2, decode_pubkey/2, decode_pubkey/1]).
+-export([init/1, allowed_methods/2, process_post/2, decode_stream/2, decode_stream/1]).
 
 -include_lib("webmachine/include/webmachine.hrl").
 
+-define(OLD_PACKET_FORMAT, 2).
 -define(PUBKEY_PACKET, 6).
+-define(UID_PACKET, 13).
 -define(PGP_VERSION, 4).
 
 -define(CRC24_INIT, 16#B704CE).
@@ -25,33 +27,39 @@ process_post(ReqData, State) ->
 	{KeyBody64, CRC} = keylines(binary:split(list_to_binary(KeyText), <<$\n>>, [global])),
 	KeyBody = base64:decode(KeyBody64),
 	CRC = base64:encode(<<(crc24(KeyBody)):24/integer-big>>),
-	Key = decode_pubkey(KeyBody),
+	Key = decode_stream(KeyBody),
 	io:format("K: ~p\n", [Key]),
 	{true, ReqData, State}.
 
-decode_pubkey(Data, []) -> decode_pubkey(Data);
-decode_pubkey(Data, Opts) ->
+decode_stream(Data, []) -> decode_stream(Data);
+decode_stream(Data, Opts) ->
 	case lists:delete(file, Opts) of
 		Opts ->
 			case lists:delete(armor, Opts) of
-				Opts -> decode_pubkey(Data, []);
-				NewOpts -> decode_pubkey(decode_armor(Data), NewOpts)
+				Opts -> decode_stream(Data, []);
+				NewOpts -> decode_stream(decode_armor(Data), NewOpts)
 			end;
 		NewOpts ->
 			{ok, Contents} = file:read_file(Data),
-			decode_pubkey(Contents, NewOpts)
+			decode_stream(Contents, NewOpts)
 	end.
-decode_pubkey(<<F:2/integer-big, ?PUBKEY_PACKET:4/integer-big, LenBits:2/integer-big, Body/binary>>) ->
-	{<<?PGP_VERSION, Timestamp:32/integer-big, Algorithm, KeyRest/binary>>, S2Rest} = case LenBits of
+decode_stream(<<?OLD_PACKET_FORMAT:2/integer-big, Tag:4/integer-big,
+				LenBits:2/integer-big, Body/binary>>) ->
+	{PacketData, S2Rest} = case LenBits of
 		0 -> <<Length, Object:Length/binary, SRest/binary>> = Body, {Object, SRest};
 		1 -> <<Length:16/integer-big, Object:Length/binary, SRest/binary>> = Body, {Object, SRest};
 		2 -> <<Length:32/integer-big, Object:Length/binary, SRest/binary>> = Body, {Object, SRest}
 	end,
-	Key = decode_pubkey_algo(Algorithm, KeyRest),
-	io:format("~p\n", [{F, Timestamp, Algorithm, Key}]),
-	decode_pubkey(S2Rest);
-decode_pubkey(Data) ->
+	decode_packet(Tag, PacketData),
+	decode_stream(S2Rest);
+decode_stream(Data) ->
 	io:format("~p\n", [mochihex:to_hex(Data)]).
+
+decode_packet(?PUBKEY_PACKET, <<?PGP_VERSION, Timestamp:32/integer-big, Algorithm, KeyRest/binary>>) ->
+	Key = decode_pubkey_algo(Algorithm, KeyRest),
+	io:format("PUBKEY: ~p\n", [{Timestamp, Key}]);
+decode_packet(?UID_PACKET, UID) ->
+	io:format("UID: ~p\n", [UID]).
 
 decode_pubkey_algo(RSA, <<NLen:16/integer-big, NRest/binary>>)
   when RSA =:= ?PK_ALGO_RSA_ES; RSA =:= ?PK_ALGO_RSA_E; RSA =:= ?PK_ALGO_RSA_S ->
