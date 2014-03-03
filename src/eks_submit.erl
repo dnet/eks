@@ -27,6 +27,8 @@
 -define(HASH_ALGO_SHA512, 10).
 -define(HASH_ALGO_SHA224, 11).
 
+-record(decoder_ctx, {primary_key, subkey, uid}).
+
 init([]) -> {ok, undefined}.
 
 allowed_methods(ReqData, State) -> {['POST'], ReqData, State}.
@@ -41,7 +43,7 @@ process_post(ReqData, State) ->
 	io:format("K: ~p\n", [Key]),
 	{true, ReqData, State}.
 
-decode_stream(Data) -> decode_packets(Data, []).
+decode_stream(Data) -> decode_packets(Data, #decoder_ctx{}).
 decode_stream(Data, []) -> decode_stream(Data);
 decode_stream(Data, Opts) ->
 	case lists:delete(file, Opts) of
@@ -63,14 +65,34 @@ decode_packets(<<?OLD_PACKET_FORMAT:2/integer-big, Tag:4/integer-big,
 	end,
 	NewContext = decode_packet(Tag, PacketData, Context),
 	decode_packets(S2Rest, NewContext);
-decode_packets(Data, Context) ->
-	io:format("~p ~p\n", [mochihex:to_hex(Data), Context]).
+decode_packets(Data, _) ->
+	io:format("~p\n", [mochihex:to_hex(Data)]).
 
 decode_packet(?SIGNATURE_PACKET, <<?PGP_VERSION, SigType, PubKeyAlgo, HashAlgo,
 								   HashedLen:16/integer-big, HashedData:HashedLen/binary,
 								   UnhashedLen:16/integer-big, UnhashedData:UnhashedLen/binary,
 								   HashLeft16:2/binary, Signature/binary>>, Context) ->
-	Expected = crypto:hash(pgp_to_crypto_hash_algo(HashAlgo), HashedData), %% TODO
+	HashCtx = crypto:hash_init(pgp_to_crypto_hash_algo(HashAlgo)),
+	FinalCtx = case SigType of
+		%% 0x18: Subkey Binding Signature
+		%% 0x19: Primary Key Binding Signature
+		KeyBinding when KeyBinding =:= 16#18; KeyBinding =:= 16#19 ->
+			crypto:hash_update(crypto:hash_update(HashCtx,
+				Context#decoder_ctx.primary_key), Context#decoder_ctx.subkey);
+		%% 0x10: Generic certification of a User ID and Public-Key packet.
+		%% 0x11: Persona certification of a User ID and Public-Key packet.
+		%% 0x12: Casual certification of a User ID and Public-Key packet.
+		%% 0x13: Positive certification of a User ID and Public-Key packet.
+		Cert when Cert >= 16#10, Cert =< 16#13 ->
+			crypto:hash_update(crypto:hash_update(HashCtx,
+				Context#decoder_ctx.primary_key), Context#decoder_ctx.uid);
+		_ -> io:format("Unknown SigType ~p\n", [SigType]), HashCtx %% XXX
+	end,
+	FinalData = <<?PGP_VERSION, SigType, PubKeyAlgo, HashAlgo,
+				  HashedLen:16/integer-big, HashedData/binary>>,
+	Trailer = <<?PGP_VERSION, 16#FF, (byte_size(FinalData)):32/integer-big>>,
+	Expected = crypto:hash_final(crypto:hash_update(crypto:hash_update(FinalCtx, FinalData), Trailer)),
+	<<HashLeft16:2/binary, _/binary>> = Expected,
 	io:format("Hashed: ~s\n", [mochihex:to_hex(HashedData)]),
 	decode_signed_subpackets(HashedData),
 	decode_signed_subpackets(UnhashedData),
@@ -83,10 +105,13 @@ decode_packet(Tag, <<?PGP_VERSION, Timestamp:32/integer-big, Algorithm, KeyRest/
 	Subject = <<16#99, (byte_size(KeyData)):16/integer-big, KeyData/binary>>,
 	KeyID = crypto:hash(sha, Subject),
 	io:format("PUBKEY: ~p\n", [{Timestamp, Key, mochihex:to_hex(KeyID)}]),
-	Context;
+	case Tag of
+		?PUBKEY_PACKET -> Context#decoder_ctx{primary_key = Subject};
+		?SUBKEY_PACKET -> Context#decoder_ctx{subkey = Subject}
+	end;
 decode_packet(?UID_PACKET, UID, Context) ->
 	io:format("UID: ~p\n", [UID]),
-	Context.
+	Context#decoder_ctx{uid = <<16#B4, (byte_size(UID)):32/integer-big, UID/binary>>}.
 
 decode_signed_subpackets(<<>>) -> ok;
 decode_signed_subpackets(<<Length, Payload:Length/binary, Rest/binary>>) when Length < 192 ->
