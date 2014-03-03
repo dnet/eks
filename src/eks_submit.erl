@@ -51,7 +51,7 @@ decode_pubkey(<<F:2/integer-big, ?PUBKEY_PACKET:4/integer-big, LenBits:2/integer
 	io:format("~p\n", [{F, Timestamp, Algorithm, Key}]),
 	decode_pubkey(S2Rest);
 decode_pubkey(Data) ->
-	io:format("~p\n", [Data]).
+	io:format("~p\n", [mochihex:to_hex(Data)]).
 
 decode_pubkey_algo(RSA, <<NLen:16/integer-big, NRest/binary>>)
   when RSA =:= ?PK_ALGO_RSA_ES; RSA =:= ?PK_ALGO_RSA_E; RSA =:= ?PK_ALGO_RSA_S ->
