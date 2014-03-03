@@ -73,6 +73,7 @@ decode_packet(?SIGNATURE_PACKET, <<?PGP_VERSION, SigType, PubKeyAlgo, HashAlgo,
 	Expected = crypto:hash(pgp_to_crypto_hash_algo(HashAlgo), HashedData), %% TODO
 	io:format("Hashed: ~s\n", [mochihex:to_hex(HashedData)]),
 	decode_signed_subpackets(HashedData),
+	decode_signed_subpackets(UnhashedData),
 	io:format("SIGNATURE: ~p\n", [{SigType, PubKeyAlgo, HashAlgo, HashedLen, UnhashedLen,
 								   HashLeft16}]),
 	Context;
