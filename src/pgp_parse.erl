@@ -165,10 +165,8 @@ pgp_to_crypto_hash_algo(?HASH_ALGO_SHA384) -> sha384;
 pgp_to_crypto_hash_algo(?HASH_ALGO_SHA512) -> sha512;
 pgp_to_crypto_hash_algo(?HASH_ALGO_SHA224) -> sha224.
 
-decode_pubkey_algo(RSA, <<NLen:16/integer-big, NRest/binary>>)
+decode_pubkey_algo(RSA, Data)
   when RSA =:= ?PK_ALGO_RSA_ES; RSA =:= ?PK_ALGO_RSA_E; RSA =:= ?PK_ALGO_RSA_S ->
-	NBytes = ((NLen + 7) div 8) * 8,
-	<<N:NBytes/integer-big, ELen:16/integer-big, ERest/binary>> = NRest,
-	EBytes = ((ELen + 7) div 8) * 8,
-	<<E:EBytes/integer-big>> = ERest,
+	{N, Rest} = read_mpi(Data),
+	{E, <<>>} = read_mpi(Rest),
 	{rsa, [E, N]}.
