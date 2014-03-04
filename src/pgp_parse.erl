@@ -36,6 +36,7 @@ decode_stream(Data, Opts) ->
 	end,
 	decode_packets(Decoded, #decoder_ctx{}).
 
+decode_packets(<<>>, _) -> ok;
 decode_packets(<<?OLD_PACKET_FORMAT:2/integer-big, Tag:4/integer-big,
 				LenBits:2/integer-big, Body/binary>>, Context) ->
 	{PacketData, S2Rest} = case LenBits of
@@ -44,9 +45,7 @@ decode_packets(<<?OLD_PACKET_FORMAT:2/integer-big, Tag:4/integer-big,
 		2 -> <<Length:32/integer-big, Object:Length/binary, SRest/binary>> = Body, {Object, SRest}
 	end,
 	NewContext = decode_packet(Tag, PacketData, Context),
-	decode_packets(S2Rest, NewContext);
-decode_packets(Data, _) ->
-	io:format("~p\n", [mochihex:to_hex(Data)]).
+	decode_packets(S2Rest, NewContext).
 
 decode_packet(?SIGNATURE_PACKET, <<?PGP_VERSION, SigType, PubKeyAlgo, HashAlgo,
 								   HashedLen:16/integer-big, HashedData:HashedLen/binary,
@@ -57,20 +56,16 @@ decode_packet(?SIGNATURE_PACKET, <<?PGP_VERSION, SigType, PubKeyAlgo, HashAlgo,
 	ContextAfterHashed = decode_signed_subpackets(HashedData, Context),
 	ContextAfterUnhashed = decode_signed_subpackets(UnhashedData, ContextAfterHashed),
 	verify_signature_packet(PubKeyAlgo, HashAlgo, Expected, Signature, SigType, ContextAfterUnhashed),
-	io:format("SIGNATURE: ~p\n", [{SigType, PubKeyAlgo, HashAlgo, HashedLen, UnhashedLen,
-								   HashLeft16}]),
 	ContextAfterUnhashed;
 decode_packet(Tag, <<?PGP_VERSION, Timestamp:32/integer-big, Algorithm, KeyRest/binary>> = KeyData, Context)
   when Tag =:= ?PUBKEY_PACKET; Tag =:= ?SUBKEY_PACKET ->
 	Key = decode_pubkey_algo(Algorithm, KeyRest),
 	Subject = <<16#99, (byte_size(KeyData)):16/integer-big, KeyData/binary>>,
-	io:format("PUBKEY: ~p\n", [{Timestamp, Key, mochihex:to_hex(key_id(Subject))}]),
 	case Tag of
 		?PUBKEY_PACKET -> Context#decoder_ctx{primary_key = {Subject, Key}};
 		?SUBKEY_PACKET -> Context#decoder_ctx{subkey = {Subject, Key}}
 	end;
 decode_packet(?UID_PACKET, UID, Context) ->
-	io:format("UID: ~p\n", [UID]),
 	Context#decoder_ctx{uid = <<16#B4, (byte_size(UID)):32/integer-big, UID/binary>>}.
 
 hash_signature_packet(SigType, PubKeyAlgo, HashAlgo, HashedData, Context) ->
@@ -139,37 +134,9 @@ decode_signed_subpackets(<<255, Length:32/integer-big, Payload:Length/binary, Re
 	NC = decode_signed_subpacket(Payload, C),
 	decode_signed_subpackets(Rest, NC).
 
-%% 2 = Signature Creation Time
-decode_signed_subpacket(<<2, Timestamp:32/integer-big>>, C) ->
-	io:format("Signature Creation Time: ~p\n", [Timestamp]), C;
-%% 9 = Key Expiration Time
-decode_signed_subpacket(<<9, Timestamp:32/integer-big>>, C) ->
-	io:format("Key Expiration Time: ~p\n", [Timestamp]), C;
-%% 11 = Preferred Symmetric Algorithms
-decode_signed_subpacket(<<11, Algorithms/binary>>, C) ->
-	io:format("Preferred Symmetric Algorithms: ~p\n", [Algorithms]), C;
 %% 16 = Issuer
-decode_signed_subpacket(<<16, Issuer:8/binary>>, C) ->
-	io:format("Issuer: ~p\n", [mochihex:to_hex(Issuer)]), C#decoder_ctx{issuer = Issuer};
-%% 21 = Preferred Hash Algorithms
-decode_signed_subpacket(<<21, Algorithms/binary>>, C) ->
-	io:format("Preferred Hash Algorithms: ~p\n", [Algorithms]), C;
-%% 22 = Preferred Compression Algorithms
-decode_signed_subpacket(<<22, Algorithms/binary>>, C) ->
-	io:format("Preferred Compression Algorithms: ~p\n", [Algorithms]), C;
-%% 23 = Key Server Preferences
-decode_signed_subpacket(<<23, NoModify:1/integer, _/bits>>, C) ->
-	io:format("Key Server Preferences: ~p\n", [{NoModify}]), C;
-%% 27 = Key Flags
-decode_signed_subpacket(<<27, SharedPrivKey:1/integer, _:2/integer, SplitPrivKey:1/integer,
-						  CanEncryptStorage:1/integer, CanEncryptComms:1/integer,
-						  CanSign:1/integer, CanCertify:1/integer, _/binary>>, C) ->
-	io:format("Key Flags: ~p\n", [{SharedPrivKey, SplitPrivKey, CanEncryptStorage,
-								   CanEncryptComms, CanSign, CanCertify}]), C;
-%% 30 = Features
-decode_signed_subpacket(<<30, _:7/integer, ModificationDetection:1/integer, _/binary>>, C) ->
-	io:format("Features: ~p\n", [{ModificationDetection}]), C;
-decode_signed_subpacket(<<Tag, _/binary>>, C) -> io:format("Ingored ~p\n", [Tag]), C.
+decode_signed_subpacket(<<16, Issuer:8/binary>>, C) -> C#decoder_ctx{issuer = Issuer};
+decode_signed_subpacket(<<_Tag, _/binary>>, C) -> C.
 
 pgp_to_crypto_hash_algo(?HASH_ALGO_MD5) -> md5;
 pgp_to_crypto_hash_algo(?HASH_ALGO_SHA1) -> sha;
