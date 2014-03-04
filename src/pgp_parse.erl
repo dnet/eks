@@ -78,25 +78,7 @@ decode_packet(?SIGNATURE_PACKET, <<?PGP_VERSION, SigType, PubKeyAlgo, HashAlgo,
 	<<HashLeft16:2/binary, _/binary>> = Expected,
 	ContextAfterHashed = decode_signed_subpackets(HashedData, Context),
 	ContextAfterUnhashed = decode_signed_subpackets(UnhashedData, ContextAfterHashed),
-	CS = case PubKeyAlgo of
-		RSA when RSA =:= ?PK_ALGO_RSA_ES; RSA =:= ?PK_ALGO_RSA_S ->
-			{S, <<>>} = read_mpi(Signature), S;
-		_ -> unknown %% XXX
-	end,
-	case SigType of
-		16#18 ->
-			{_, {CPA, CryptoPK}} = Context#decoder_ctx.primary_key,
-			true = crypto:verify(CPA, CHA, {digest, Expected}, CS, CryptoPK);
-		C when C >= 16#10, C =< 16#13 ->
-			I = ContextAfterUnhashed#decoder_ctx.issuer,
-			{HPK, {CPA, CryptoPK}} = ContextAfterUnhashed#decoder_ctx.primary_key,
-			case binary:longest_common_suffix([I, key_id(HPK)]) =:= byte_size(I) of
-				true ->
-					true = crypto:verify(CPA, CHA, {digest, Expected}, CS, CryptoPK);
-				false -> needs_keystore %% TODO
-			end;
-		_ -> unknown
-	end,
+	verify_signature_packet(PubKeyAlgo, CHA, Expected, Signature, SigType, ContextAfterUnhashed),
 	io:format("SIGNATURE: ~p\n", [{SigType, PubKeyAlgo, HashAlgo, HashedLen, UnhashedLen,
 								   HashLeft16}]),
 	ContextAfterUnhashed;
@@ -112,6 +94,27 @@ decode_packet(Tag, <<?PGP_VERSION, Timestamp:32/integer-big, Algorithm, KeyRest/
 decode_packet(?UID_PACKET, UID, Context) ->
 	io:format("UID: ~p\n", [UID]),
 	Context#decoder_ctx{uid = <<16#B4, (byte_size(UID)):32/integer-big, UID/binary>>}.
+
+verify_signature_packet(PubKeyAlgo, CHA, Hash, Signature, SigType, Context) ->
+	CS = case PubKeyAlgo of
+		RSA when RSA =:= ?PK_ALGO_RSA_ES; RSA =:= ?PK_ALGO_RSA_S ->
+			{S, <<>>} = read_mpi(Signature), S;
+		_ -> unknown %% XXX
+	end,
+	case SigType of
+		16#18 ->
+			{_, {CPA, CryptoPK}} = Context#decoder_ctx.primary_key,
+			true = crypto:verify(CPA, CHA, {digest, Hash}, CS, CryptoPK);
+		C when C >= 16#10, C =< 16#13 ->
+			I = Context#decoder_ctx.issuer,
+			{HPK, {CPA, CryptoPK}} = Context#decoder_ctx.primary_key,
+			case binary:longest_common_suffix([I, key_id(HPK)]) =:= byte_size(I) of
+				true ->
+					true = crypto:verify(CPA, CHA, {digest, Hash}, CS, CryptoPK);
+				false -> needs_keystore %% TODO
+			end;
+		_ -> unknown
+	end.
 
 read_mpi(<<Length:16/integer-big, Rest/binary>>) ->
 	ByteLen = (Length + 7) div 8,
