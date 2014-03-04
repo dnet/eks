@@ -175,7 +175,7 @@ decode_pubkey_algo(RSA, <<NLen:16/integer-big, NRest/binary>>)
 	{rsa_public, [E, N]}.
 
 decode_armor(KeyText) ->
-	{KeyBody64, CRC} = keylines(binary:split(list_to_binary(KeyText), <<$\n>>, [global])),
+	{KeyBody64, CRC} = keylines(binary:split(KeyText, <<$\n>>, [global])),
 	KeyBody = base64:decode(KeyBody64),
 	CRC = base64:encode(<<(crc24(KeyBody)):24/integer-big>>),
 	KeyBody.
