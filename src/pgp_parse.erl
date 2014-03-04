@@ -52,7 +52,8 @@ decode_packet(?SIGNATURE_PACKET, <<?PGP_VERSION, SigType, PubKeyAlgo, HashAlgo,
 								   HashedLen:16/integer-big, HashedData:HashedLen/binary,
 								   UnhashedLen:16/integer-big, UnhashedData:UnhashedLen/binary,
 								   HashLeft16:2/binary, Signature/binary>>, Context) ->
-	HashCtx = crypto:hash_init(pgp_to_crypto_hash_algo(HashAlgo)),
+	CHA = pgp_to_crypto_hash_algo(HashAlgo),
+	HashCtx = crypto:hash_init(CHA),
 	FinalCtx = case SigType of
 		%% 0x18: Subkey Binding Signature
 		%% 0x19: Primary Key Binding Signature
