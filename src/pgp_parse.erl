@@ -78,6 +78,17 @@ decode_packet(?SIGNATURE_PACKET, <<?PGP_VERSION, SigType, PubKeyAlgo, HashAlgo,
 	<<HashLeft16:2/binary, _/binary>> = Expected,
 	decode_signed_subpackets(HashedData),
 	decode_signed_subpackets(UnhashedData),
+	CS = case PubKeyAlgo of
+		RSA when RSA =:= ?PK_ALGO_RSA_ES; RSA =:= ?PK_ALGO_RSA_S ->
+			{S, <<>>} = read_mpi(Signature), S;
+		_ -> unknown %% XXX
+	end,
+	case SigType of
+		16#18 ->
+			{_, {CPA, CryptoPK}} = Context#decoder_ctx.primary_key,
+			true = crypto:verify(CPA, CHA, {digest, Expected}, CS, CryptoPK);
+		_ -> unknown
+	end,
 	io:format("SIGNATURE: ~p\n", [{SigType, PubKeyAlgo, HashAlgo, HashedLen, UnhashedLen,
 								   HashLeft16}]),
 	Context;
@@ -93,6 +104,11 @@ decode_packet(Tag, <<?PGP_VERSION, Timestamp:32/integer-big, Algorithm, KeyRest/
 decode_packet(?UID_PACKET, UID, Context) ->
 	io:format("UID: ~p\n", [UID]),
 	Context#decoder_ctx{uid = <<16#B4, (byte_size(UID)):32/integer-big, UID/binary>>}.
+
+read_mpi(<<Length:16/integer-big, Rest/binary>>) ->
+	ByteLen = (Length + 7) div 8,
+	<<Data:ByteLen/binary, Trailer/binary>> = Rest,
+	{Data, Trailer}.
 
 key_id(Subject) -> crypto:hash(sha, Subject).
 
