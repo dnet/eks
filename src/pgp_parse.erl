@@ -6,6 +6,7 @@
 -define(PUBKEY_PACKET, 6).
 -define(UID_PACKET, 13).
 -define(SUBKEY_PACKET, 14).
+-define(ISSUER_SUBPACKET, 16).
 -define(PGP_VERSION, 4).
 
 -define(PK_ALGO_RSA_ES, 1).
@@ -134,8 +135,7 @@ decode_signed_subpackets(<<255, Length:32/integer-big, Payload:Length/binary, Re
 	NC = decode_signed_subpacket(Payload, C),
 	decode_signed_subpackets(Rest, NC).
 
-%% 16 = Issuer
-decode_signed_subpacket(<<16, Issuer:8/binary>>, C) -> C#decoder_ctx{issuer = Issuer};
+decode_signed_subpacket(<<?ISSUER_SUBPACKET, Issuer:8/binary>>, C) -> C#decoder_ctx{issuer = Issuer};
 decode_signed_subpacket(<<_Tag, _/binary>>, C) -> C.
 
 pgp_to_crypto_hash_algo(?HASH_ALGO_MD5) -> md5;
