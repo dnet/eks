@@ -24,19 +24,18 @@
 
 -record(decoder_ctx, {primary_key, subkey, uid}).
 
-decode_stream(Data) -> decode_packets(Data, #decoder_ctx{}).
-decode_stream(Data, []) -> decode_stream(Data);
+decode_stream(Data) -> decode_stream(Data, []).
 decode_stream(Data, Opts) ->
-	case lists:delete(file, Opts) of
-		Opts ->
-			case lists:delete(armor, Opts) of
-				Opts -> decode_stream(Data, []);
-				NewOpts -> decode_stream(pgp_armor:decode(Data), NewOpts)
-			end;
-		NewOpts ->
-			{ok, Contents} = file:read_file(Data),
-			decode_stream(Contents, NewOpts)
-	end.
+	Contents = case proplists:get_bool(file, Opts) of
+		true -> {ok, D} = file:read_file(Data), D;
+		false -> Data
+	end,
+	Decoded = case proplists:get_bool(armor, Opts) of
+		true -> pgp_armor:decode(Contents);
+		false -> Contents
+	end,
+	decode_packets(Decoded, #decoder_ctx{}).
+
 decode_packets(<<?OLD_PACKET_FORMAT:2/integer-big, Tag:4/integer-big,
 				LenBits:2/integer-big, Body/binary>>, Context) ->
 	{PacketData, S2Rest} = case LenBits of
