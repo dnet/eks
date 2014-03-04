@@ -154,4 +154,4 @@ decode_pubkey_algo(RSA, <<NLen:16/integer-big, NRest/binary>>)
 	<<N:NBytes/integer-big, ELen:16/integer-big, ERest/binary>> = NRest,
 	EBytes = ((ELen + 7) div 8) * 8,
 	<<E:EBytes/integer-big>> = ERest,
-	{rsa_public, [E, N]}.
+	{rsa, [E, N]}.
