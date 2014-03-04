@@ -22,7 +22,7 @@
 -define(HASH_ALGO_SHA512, 10).
 -define(HASH_ALGO_SHA224, 11).
 
--record(decoder_ctx, {primary_key, subkey, uid}).
+-record(decoder_ctx, {primary_key, subkey, uid, issuer}).
 
 decode_stream(Data) -> decode_stream(Data, []).
 decode_stream(Data, Opts) ->
@@ -136,7 +136,7 @@ decode_signed_subpacket(<<11, Algorithms/binary>>, C) ->
 	io:format("Preferred Symmetric Algorithms: ~p\n", [Algorithms]), C;
 %% 16 = Issuer
 decode_signed_subpacket(<<16, Issuer:8/binary>>, C) ->
-	io:format("Issuer: ~p\n", [mochihex:to_hex(Issuer)]), C;
+	io:format("Issuer: ~p\n", [mochihex:to_hex(Issuer)]), C#decoder_ctx{issuer = Issuer};
 %% 21 = Preferred Hash Algorithms
 decode_signed_subpacket(<<21, Algorithms/binary>>, C) ->
 	io:format("Preferred Hash Algorithms: ~p\n", [Algorithms]), C;
