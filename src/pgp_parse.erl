@@ -84,8 +84,7 @@ decode_packet(Tag, <<?PGP_VERSION, Timestamp:32/integer-big, Algorithm, KeyRest/
   when Tag =:= ?PUBKEY_PACKET; Tag =:= ?SUBKEY_PACKET ->
 	Key = decode_pubkey_algo(Algorithm, KeyRest),
 	Subject = <<16#99, (byte_size(KeyData)):16/integer-big, KeyData/binary>>,
-	KeyID = crypto:hash(sha, Subject),
-	io:format("PUBKEY: ~p\n", [{Timestamp, Key, mochihex:to_hex(KeyID)}]),
+	io:format("PUBKEY: ~p\n", [{Timestamp, Key, mochihex:to_hex(key_id(Subject))}]),
 	case Tag of
 		?PUBKEY_PACKET -> Context#decoder_ctx{primary_key = Subject};
 		?SUBKEY_PACKET -> Context#decoder_ctx{subkey = Subject}
@@ -93,6 +92,8 @@ decode_packet(Tag, <<?PGP_VERSION, Timestamp:32/integer-big, Algorithm, KeyRest/
 decode_packet(?UID_PACKET, UID, Context) ->
 	io:format("UID: ~p\n", [UID]),
 	Context#decoder_ctx{uid = <<16#B4, (byte_size(UID)):32/integer-big, UID/binary>>}.
+
+key_id(Subject) -> crypto:hash(sha, Subject).
 
 decode_signed_subpackets(<<>>) -> ok;
 decode_signed_subpackets(<<Length, Payload:Length/binary, Rest/binary>>) when Length < 192 ->
