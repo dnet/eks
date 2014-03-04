@@ -87,6 +87,14 @@ decode_packet(?SIGNATURE_PACKET, <<?PGP_VERSION, SigType, PubKeyAlgo, HashAlgo,
 		16#18 ->
 			{_, {CPA, CryptoPK}} = Context#decoder_ctx.primary_key,
 			true = crypto:verify(CPA, CHA, {digest, Expected}, CS, CryptoPK);
+		C when C >= 16#10, C =< 16#13 ->
+			I = ContextAfterUnhashed#decoder_ctx.issuer,
+			{HPK, {CPA, CryptoPK}} = ContextAfterUnhashed#decoder_ctx.primary_key,
+			case binary:longest_common_suffix([I, key_id(HPK)]) =:= byte_size(I) of
+				true ->
+					true = crypto:verify(CPA, CHA, {digest, Expected}, CS, CryptoPK);
+				false -> needs_keystore %% TODO
+			end;
 		_ -> unknown
 	end,
 	io:format("SIGNATURE: ~p\n", [{SigType, PubKeyAlgo, HashAlgo, HashedLen, UnhashedLen,
