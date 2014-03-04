@@ -58,15 +58,17 @@ decode_packet(?SIGNATURE_PACKET, <<?PGP_VERSION, SigType, PubKeyAlgo, HashAlgo,
 		%% 0x18: Subkey Binding Signature
 		%% 0x19: Primary Key Binding Signature
 		KeyBinding when KeyBinding =:= 16#18; KeyBinding =:= 16#19 ->
-			crypto:hash_update(crypto:hash_update(HashCtx,
-				Context#decoder_ctx.primary_key), Context#decoder_ctx.subkey);
+			{PK, _} = Context#decoder_ctx.primary_key,
+			{SK, _} = Context#decoder_ctx.subkey,
+			crypto:hash_update(crypto:hash_update(HashCtx, PK), SK);
 		%% 0x10: Generic certification of a User ID and Public-Key packet.
 		%% 0x11: Persona certification of a User ID and Public-Key packet.
 		%% 0x12: Casual certification of a User ID and Public-Key packet.
 		%% 0x13: Positive certification of a User ID and Public-Key packet.
 		Cert when Cert >= 16#10, Cert =< 16#13 ->
-			crypto:hash_update(crypto:hash_update(HashCtx,
-				Context#decoder_ctx.primary_key), Context#decoder_ctx.uid);
+			{PK, _} = Context#decoder_ctx.primary_key,
+			UID = Context#decoder_ctx.uid,
+			crypto:hash_update(crypto:hash_update(HashCtx, PK), UID);
 		_ -> io:format("Unknown SigType ~p\n", [SigType]), HashCtx %% XXX
 	end,
 	FinalData = <<?PGP_VERSION, SigType, PubKeyAlgo, HashAlgo,
@@ -85,8 +87,8 @@ decode_packet(Tag, <<?PGP_VERSION, Timestamp:32/integer-big, Algorithm, KeyRest/
 	Subject = <<16#99, (byte_size(KeyData)):16/integer-big, KeyData/binary>>,
 	io:format("PUBKEY: ~p\n", [{Timestamp, Key, mochihex:to_hex(key_id(Subject))}]),
 	case Tag of
-		?PUBKEY_PACKET -> Context#decoder_ctx{primary_key = Subject};
-		?SUBKEY_PACKET -> Context#decoder_ctx{subkey = Subject}
+		?PUBKEY_PACKET -> Context#decoder_ctx{primary_key = {Subject, Key}};
+		?SUBKEY_PACKET -> Context#decoder_ctx{subkey = {Subject, Key}}
 	end;
 decode_packet(?UID_PACKET, UID, Context) ->
 	io:format("UID: ~p\n", [UID]),
