@@ -52,8 +52,29 @@ decode_packet(?SIGNATURE_PACKET, <<?PGP_VERSION, SigType, PubKeyAlgo, HashAlgo,
 								   HashedLen:16/integer-big, HashedData:HashedLen/binary,
 								   UnhashedLen:16/integer-big, UnhashedData:UnhashedLen/binary,
 								   HashLeft16:2/binary, Signature/binary>>, Context) ->
-	CHA = pgp_to_crypto_hash_algo(HashAlgo),
-	HashCtx = crypto:hash_init(CHA),
+	Expected = hash_signature_packet(SigType, PubKeyAlgo, HashAlgo, HashedData, Context),
+	<<HashLeft16:2/binary, _/binary>> = Expected,
+	ContextAfterHashed = decode_signed_subpackets(HashedData, Context),
+	ContextAfterUnhashed = decode_signed_subpackets(UnhashedData, ContextAfterHashed),
+	verify_signature_packet(PubKeyAlgo, HashAlgo, Expected, Signature, SigType, ContextAfterUnhashed),
+	io:format("SIGNATURE: ~p\n", [{SigType, PubKeyAlgo, HashAlgo, HashedLen, UnhashedLen,
+								   HashLeft16}]),
+	ContextAfterUnhashed;
+decode_packet(Tag, <<?PGP_VERSION, Timestamp:32/integer-big, Algorithm, KeyRest/binary>> = KeyData, Context)
+  when Tag =:= ?PUBKEY_PACKET; Tag =:= ?SUBKEY_PACKET ->
+	Key = decode_pubkey_algo(Algorithm, KeyRest),
+	Subject = <<16#99, (byte_size(KeyData)):16/integer-big, KeyData/binary>>,
+	io:format("PUBKEY: ~p\n", [{Timestamp, Key, mochihex:to_hex(key_id(Subject))}]),
+	case Tag of
+		?PUBKEY_PACKET -> Context#decoder_ctx{primary_key = {Subject, Key}};
+		?SUBKEY_PACKET -> Context#decoder_ctx{subkey = {Subject, Key}}
+	end;
+decode_packet(?UID_PACKET, UID, Context) ->
+	io:format("UID: ~p\n", [UID]),
+	Context#decoder_ctx{uid = <<16#B4, (byte_size(UID)):32/integer-big, UID/binary>>}.
+
+hash_signature_packet(SigType, PubKeyAlgo, HashAlgo, HashedData, Context) ->
+	HashCtx = crypto:hash_init(pgp_to_crypto_hash_algo(HashAlgo)),
 	FinalCtx = case SigType of
 		%% 0x18: Subkey Binding Signature
 		%% 0x19: Primary Key Binding Signature
@@ -72,30 +93,12 @@ decode_packet(?SIGNATURE_PACKET, <<?PGP_VERSION, SigType, PubKeyAlgo, HashAlgo,
 		_ -> io:format("Unknown SigType ~p\n", [SigType]), HashCtx %% XXX
 	end,
 	FinalData = <<?PGP_VERSION, SigType, PubKeyAlgo, HashAlgo,
-				  HashedLen:16/integer-big, HashedData/binary>>,
+				  (byte_size(HashedData)):16/integer-big, HashedData/binary>>,
 	Trailer = <<?PGP_VERSION, 16#FF, (byte_size(FinalData)):32/integer-big>>,
-	Expected = crypto:hash_final(crypto:hash_update(crypto:hash_update(FinalCtx, FinalData), Trailer)),
-	<<HashLeft16:2/binary, _/binary>> = Expected,
-	ContextAfterHashed = decode_signed_subpackets(HashedData, Context),
-	ContextAfterUnhashed = decode_signed_subpackets(UnhashedData, ContextAfterHashed),
-	verify_signature_packet(PubKeyAlgo, CHA, Expected, Signature, SigType, ContextAfterUnhashed),
-	io:format("SIGNATURE: ~p\n", [{SigType, PubKeyAlgo, HashAlgo, HashedLen, UnhashedLen,
-								   HashLeft16}]),
-	ContextAfterUnhashed;
-decode_packet(Tag, <<?PGP_VERSION, Timestamp:32/integer-big, Algorithm, KeyRest/binary>> = KeyData, Context)
-  when Tag =:= ?PUBKEY_PACKET; Tag =:= ?SUBKEY_PACKET ->
-	Key = decode_pubkey_algo(Algorithm, KeyRest),
-	Subject = <<16#99, (byte_size(KeyData)):16/integer-big, KeyData/binary>>,
-	io:format("PUBKEY: ~p\n", [{Timestamp, Key, mochihex:to_hex(key_id(Subject))}]),
-	case Tag of
-		?PUBKEY_PACKET -> Context#decoder_ctx{primary_key = {Subject, Key}};
-		?SUBKEY_PACKET -> Context#decoder_ctx{subkey = {Subject, Key}}
-	end;
-decode_packet(?UID_PACKET, UID, Context) ->
-	io:format("UID: ~p\n", [UID]),
-	Context#decoder_ctx{uid = <<16#B4, (byte_size(UID)):32/integer-big, UID/binary>>}.
+	crypto:hash_final(crypto:hash_update(crypto:hash_update(FinalCtx, FinalData), Trailer)).
 
-verify_signature_packet(PubKeyAlgo, CHA, Hash, Signature, SigType, Context) ->
+verify_signature_packet(PubKeyAlgo, HashAlgo, Hash, Signature, SigType, Context) ->
+	CHA = pgp_to_crypto_hash_algo(HashAlgo),
 	CS = case PubKeyAlgo of
 		RSA when RSA =:= ?PK_ALGO_RSA_ES; RSA =:= ?PK_ALGO_RSA_S ->
 			{S, <<>>} = read_mpi(Signature), S;
