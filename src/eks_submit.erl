@@ -36,10 +36,7 @@ allowed_methods(ReqData, State) -> {['POST'], ReqData, State}.
 process_post(ReqData, State) ->
 	QS = mochiweb_util:parse_qs(wrq:req_body(ReqData)),
 	{_, KeyText} = lists:keyfind("keytext", 1, QS),
-	{KeyBody64, CRC} = keylines(binary:split(list_to_binary(KeyText), <<$\n>>, [global])),
-	KeyBody = base64:decode(KeyBody64),
-	CRC = base64:encode(<<(crc24(KeyBody)):24/integer-big>>),
-	Key = decode_stream(KeyBody),
+	Key = decode_stream(list_to_binary(KeyText), [armor]),
 	io:format("K: ~p\n", [Key]),
 	{true, ReqData, State}.
 
