@@ -76,8 +76,8 @@ decode_packet(?SIGNATURE_PACKET, <<?PGP_VERSION, SigType, PubKeyAlgo, HashAlgo,
 	Trailer = <<?PGP_VERSION, 16#FF, (byte_size(FinalData)):32/integer-big>>,
 	Expected = crypto:hash_final(crypto:hash_update(crypto:hash_update(FinalCtx, FinalData), Trailer)),
 	<<HashLeft16:2/binary, _/binary>> = Expected,
-	decode_signed_subpackets(HashedData),
-	decode_signed_subpackets(UnhashedData),
+	ContextAfterHashed = decode_signed_subpackets(HashedData, Context),
+	ContextAfterUnhashed = decode_signed_subpackets(UnhashedData, ContextAfterHashed),
 	CS = case PubKeyAlgo of
 		RSA when RSA =:= ?PK_ALGO_RSA_ES; RSA =:= ?PK_ALGO_RSA_S ->
 			{S, <<>>} = read_mpi(Signature), S;
@@ -91,7 +91,7 @@ decode_packet(?SIGNATURE_PACKET, <<?PGP_VERSION, SigType, PubKeyAlgo, HashAlgo,
 	end,
 	io:format("SIGNATURE: ~p\n", [{SigType, PubKeyAlgo, HashAlgo, HashedLen, UnhashedLen,
 								   HashLeft16}]),
-	Context;
+	ContextAfterUnhashed;
 decode_packet(Tag, <<?PGP_VERSION, Timestamp:32/integer-big, Algorithm, KeyRest/binary>> = KeyData, Context)
   when Tag =:= ?PUBKEY_PACKET; Tag =:= ?SUBKEY_PACKET ->
 	Key = decode_pubkey_algo(Algorithm, KeyRest),
@@ -112,50 +112,50 @@ read_mpi(<<Length:16/integer-big, Rest/binary>>) ->
 
 key_id(Subject) -> crypto:hash(sha, Subject).
 
-decode_signed_subpackets(<<>>) -> ok;
-decode_signed_subpackets(<<Length, Payload:Length/binary, Rest/binary>>) when Length < 192 ->
-	decode_signed_subpacket(Payload),
-	decode_signed_subpackets(Rest);
-decode_signed_subpackets(<<LengthHigh, LengthLow, PayloadRest/binary>>) when LengthHigh < 255 ->
+decode_signed_subpackets(<<>>, Context) -> Context;
+decode_signed_subpackets(<<Length, Payload:Length/binary, Rest/binary>>, C) when Length < 192 ->
+	NC = decode_signed_subpacket(Payload, C),
+	decode_signed_subpackets(Rest, NC);
+decode_signed_subpackets(<<LengthHigh, LengthLow, PayloadRest/binary>>, C) when LengthHigh < 255 ->
 	Length = ((LengthHigh - 192) bsl 8) bor LengthLow,
 	<<Payload:Length/binary, Rest/binary>> = PayloadRest,
-	decode_signed_subpacket(Payload),
-	decode_signed_subpackets(Rest);
-decode_signed_subpackets(<<255, Length:32/integer-big, Payload:Length/binary, Rest/binary>>) ->
-	decode_signed_subpacket(Payload),
-	decode_signed_subpackets(Rest).
+	NC = decode_signed_subpacket(Payload, C),
+	decode_signed_subpackets(Rest, NC);
+decode_signed_subpackets(<<255, Length:32/integer-big, Payload:Length/binary, Rest/binary>>, C) ->
+	NC = decode_signed_subpacket(Payload, C),
+	decode_signed_subpackets(Rest, NC).
 
 %% 2 = Signature Creation Time
-decode_signed_subpacket(<<2, Timestamp:32/integer-big>>) ->
-	io:format("Signature Creation Time: ~p\n", [Timestamp]);
+decode_signed_subpacket(<<2, Timestamp:32/integer-big>>, C) ->
+	io:format("Signature Creation Time: ~p\n", [Timestamp]), C;
 %% 9 = Key Expiration Time
-decode_signed_subpacket(<<9, Timestamp:32/integer-big>>) ->
-	io:format("Key Expiration Time: ~p\n", [Timestamp]);
+decode_signed_subpacket(<<9, Timestamp:32/integer-big>>, C) ->
+	io:format("Key Expiration Time: ~p\n", [Timestamp]), C;
 %% 11 = Preferred Symmetric Algorithms
-decode_signed_subpacket(<<11, Algorithms/binary>>) ->
-	io:format("Preferred Symmetric Algorithms: ~p\n", [Algorithms]);
+decode_signed_subpacket(<<11, Algorithms/binary>>, C) ->
+	io:format("Preferred Symmetric Algorithms: ~p\n", [Algorithms]), C;
 %% 16 = Issuer
-decode_signed_subpacket(<<16, Issuer:8/binary>>) ->
-	io:format("Issuer: ~p\n", [mochihex:to_hex(Issuer)]);
+decode_signed_subpacket(<<16, Issuer:8/binary>>, C) ->
+	io:format("Issuer: ~p\n", [mochihex:to_hex(Issuer)]), C;
 %% 21 = Preferred Hash Algorithms
-decode_signed_subpacket(<<21, Algorithms/binary>>) ->
-	io:format("Preferred Hash Algorithms: ~p\n", [Algorithms]);
+decode_signed_subpacket(<<21, Algorithms/binary>>, C) ->
+	io:format("Preferred Hash Algorithms: ~p\n", [Algorithms]), C;
 %% 22 = Preferred Compression Algorithms
-decode_signed_subpacket(<<22, Algorithms/binary>>) ->
-	io:format("Preferred Compression Algorithms: ~p\n", [Algorithms]);
+decode_signed_subpacket(<<22, Algorithms/binary>>, C) ->
+	io:format("Preferred Compression Algorithms: ~p\n", [Algorithms]), C;
 %% 23 = Key Server Preferences
-decode_signed_subpacket(<<23, NoModify:1/integer, _/bits>>) ->
-	io:format("Key Server Preferences: ~p\n", [{NoModify}]);
+decode_signed_subpacket(<<23, NoModify:1/integer, _/bits>>, C) ->
+	io:format("Key Server Preferences: ~p\n", [{NoModify}]), C;
 %% 27 = Key Flags
 decode_signed_subpacket(<<27, SharedPrivKey:1/integer, _:2/integer, SplitPrivKey:1/integer,
 						  CanEncryptStorage:1/integer, CanEncryptComms:1/integer,
-						  CanSign:1/integer, CanCertify:1/integer, _/binary>>) ->
+						  CanSign:1/integer, CanCertify:1/integer, _/binary>>, C) ->
 	io:format("Key Flags: ~p\n", [{SharedPrivKey, SplitPrivKey, CanEncryptStorage,
-								   CanEncryptComms, CanSign, CanCertify}]);
+								   CanEncryptComms, CanSign, CanCertify}]), C;
 %% 30 = Features
-decode_signed_subpacket(<<30, _:7/integer, ModificationDetection:1/integer, _/binary>>) ->
-	io:format("Features: ~p\n", [{ModificationDetection}]);
-decode_signed_subpacket(<<Tag, _/binary>>) -> io:format("Ingored ~p\n", [Tag]).
+decode_signed_subpacket(<<30, _:7/integer, ModificationDetection:1/integer, _/binary>>, C) ->
+	io:format("Features: ~p\n", [{ModificationDetection}]), C;
+decode_signed_subpacket(<<Tag, _/binary>>, C) -> io:format("Ingored ~p\n", [Tag]), C.
 
 pgp_to_crypto_hash_algo(?HASH_ALGO_MD5) -> md5;
 pgp_to_crypto_hash_algo(?HASH_ALGO_SHA1) -> sha;
