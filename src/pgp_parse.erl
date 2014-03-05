@@ -150,7 +150,7 @@ decode_signed_subpackets(<<Length, Payload:Length/binary, Rest/binary>>, C) when
 	NC = decode_signed_subpacket(Payload, C),
 	decode_signed_subpackets(Rest, NC);
 decode_signed_subpackets(<<LengthHigh, LengthLow, PayloadRest/binary>>, C) when LengthHigh < 255 ->
-	Length = ((LengthHigh - 192) bsl 8) bor LengthLow,
+	Length = ((LengthHigh - 192) bsl 8) bor LengthLow + 192,
 	<<Payload:Length/binary, Rest/binary>> = PayloadRest,
 	NC = decode_signed_subpacket(Payload, C),
 	decode_signed_subpackets(Rest, NC);
