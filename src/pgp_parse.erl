@@ -125,7 +125,15 @@ verify_signature_packet(PubKeyAlgo, HashAlgo, Hash, Signature, SigType, Context)
 			case binary:longest_common_suffix([I, key_id(HPK)]) =:= byte_size(I) of
 				true ->
 					true = crypto:verify(CPA, CHA, {digest, Hash}, CS, CryptoPK);
-				false -> needs_keystore %% TODO
+				false ->
+					case pgp_keystore:get_issuer_keys(I) of
+						[] -> no_issuer;
+						Keys ->
+							true = lists:any(fun (Key) ->
+								{_, {ICPA, ICryptoPK}} = decode_public_key(Key),
+								crypto:verify(ICPA, CHA, {digest, Hash}, CS, ICryptoPK)
+							end, Keys)
+					end
 			end;
 		_ -> unknown
 	end.
