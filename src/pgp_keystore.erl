@@ -1,5 +1,5 @@
 -module(pgp_keystore).
--export([import_stream/2, init_schema/0]).
+-export([import_stream/2, init_schema/0, get_issuer_keys/1]).
 
 -record(pgp_pubkey, {id, data, parent_id}).
 -record(pgp_uid, {key_id, uid}).
@@ -55,3 +55,12 @@ import_handler(signature, [Data | _], State) ->
 	mnesia:write(#pgp_signature{uid = State#import_ctx.uid, data = Data}),
 	State;
 import_handler(_, _, State) -> State.
+
+get_issuer_keys(IssuerID) ->
+	{atomic, Keys} = mnesia:transaction(fun () ->
+		case mnesia:read(pgp_issuer, IssuerID) of
+			[] = Empty -> Empty;
+			Issuers -> [PK#pgp_pubkey.data || I <- Issuers, PK <- mnesia:read(pgp_pubkey, I#pgp_issuer.key_id)]
+		end
+	end),
+	Keys.
