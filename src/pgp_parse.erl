@@ -1,5 +1,5 @@
 -module(pgp_parse).
--export([decode_stream/2, decode_stream/1]).
+-export([decode_stream/2, decode_stream/1, key_id/1]).
 
 -define(OLD_PACKET_FORMAT, 2).
 -define(SIGNATURE_PACKET, 2).
