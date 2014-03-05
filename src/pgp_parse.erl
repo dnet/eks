@@ -23,7 +23,7 @@
 -define(HASH_ALGO_SHA512, 10).
 -define(HASH_ALGO_SHA224, 11).
 
--record(decoder_ctx, {primary_key, subkey, uid, issuer}).
+-record(decoder_ctx, {primary_key, subkey, uid, issuer, handler, handler_state}).
 
 decode_stream(Data) -> decode_stream(Data, []).
 decode_stream(Data, Opts) ->
@@ -35,7 +35,9 @@ decode_stream(Data, Opts) ->
 		true -> pgp_armor:decode(Contents);
 		false -> Contents
 	end,
-	decode_packets(Decoded, #decoder_ctx{}).
+	Handler = proplists:get_value(handler, Opts, fun (_, _, D) -> D end),
+	HS = proplists:get_value(handler_state, Opts),
+	decode_packets(Decoded, #decoder_ctx{handler = Handler, handler_state = HS}).
 
 decode_packets(<<>>, _) -> ok;
 decode_packets(<<?OLD_PACKET_FORMAT:2/integer-big, Tag:4/integer-big,
@@ -51,23 +53,33 @@ decode_packets(<<?OLD_PACKET_FORMAT:2/integer-big, Tag:4/integer-big,
 decode_packet(?SIGNATURE_PACKET, <<?PGP_VERSION, SigType, PubKeyAlgo, HashAlgo,
 								   HashedLen:16/integer-big, HashedData:HashedLen/binary,
 								   UnhashedLen:16/integer-big, UnhashedData:UnhashedLen/binary,
-								   HashLeft16:2/binary, Signature/binary>>, Context) ->
+								   HashLeft16:2/binary, Signature/binary>> = SigData, Context) ->
 	Expected = hash_signature_packet(SigType, PubKeyAlgo, HashAlgo, HashedData, Context),
 	<<HashLeft16:2/binary, _/binary>> = Expected,
 	ContextAfterHashed = decode_signed_subpackets(HashedData, Context),
 	ContextAfterUnhashed = decode_signed_subpackets(UnhashedData, ContextAfterHashed),
 	verify_signature_packet(PubKeyAlgo, HashAlgo, Expected, Signature, SigType, ContextAfterUnhashed),
-	ContextAfterUnhashed;
+	Handler = ContextAfterUnhashed#decoder_ctx.handler,
+	HS = Handler(signature, [SigData], ContextAfterUnhashed#decoder_ctx.handler_state),
+	ContextAfterUnhashed#decoder_ctx{handler_state = HS};
 decode_packet(Tag, <<?PGP_VERSION, Timestamp:32/integer-big, Algorithm, KeyRest/binary>> = KeyData, Context)
   when Tag =:= ?PUBKEY_PACKET; Tag =:= ?SUBKEY_PACKET ->
 	Key = decode_pubkey_algo(Algorithm, KeyRest),
 	Subject = <<16#99, (byte_size(KeyData)):16/integer-big, KeyData/binary>>,
+	Handler = Context#decoder_ctx.handler,
+	SK = {Subject, Key},
+	PHS = Context#decoder_ctx.handler_state,
 	case Tag of
-		?PUBKEY_PACKET -> Context#decoder_ctx{primary_key = {Subject, Key}};
-		?SUBKEY_PACKET -> Context#decoder_ctx{subkey = {Subject, Key}}
+		?PUBKEY_PACKET ->
+			HS = Handler(primary_key, [SK, KeyData, Timestamp], PHS),
+			Context#decoder_ctx{primary_key = SK, handler_state = HS};
+		?SUBKEY_PACKET ->
+			HS = Handler(subkey, [SK, KeyData, Timestamp, Context#decoder_ctx.primary_key], PHS),
+			Context#decoder_ctx{subkey = SK, handler_state = HS}
 	end;
-decode_packet(?UID_PACKET, UID, Context) ->
-	Context#decoder_ctx{uid = <<16#B4, (byte_size(UID)):32/integer-big, UID/binary>>}.
+decode_packet(?UID_PACKET, UID, C) ->
+	HS = (C#decoder_ctx.handler)(uid, [UID], C#decoder_ctx.handler_state),
+	C#decoder_ctx{uid = <<16#B4, (byte_size(UID)):32/integer-big, UID/binary>>, handler_state=HS}.
 
 hash_signature_packet(SigType, PubKeyAlgo, HashAlgo, HashedData, Context) ->
 	HashCtx = crypto:hash_init(pgp_to_crypto_hash_algo(HashAlgo)),
