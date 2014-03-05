@@ -4,6 +4,7 @@
 -record(pgp_pubkey, {id, data, parent_id}).
 -record(pgp_uid, {key_id, uid}).
 -record(pgp_signature, {uid, data}).
+-record(pgp_issuer, {issuer_id, key_id}).
 
 -record(import_ctx, {key_id, uid}).
 
@@ -23,7 +24,12 @@ init_schema() ->
 		{atomic, ok} -> ok;
 		{aborted, {already_exists, pgp_signature}} -> ok
 	end,
-	ok = mnesia:wait_for_tables([pgp_pubkey, pgp_uid, pgp_signature], 5000).
+	case mnesia:create_table(pgp_issuer, [{type, bag},
+		{attributes, record_info(fields, pgp_issuer)}, {disc_copies, [node()]}]) of
+		{atomic, ok} -> ok;
+		{aborted, {already_exists, pgp_issuer}} -> ok
+	end,
+	ok = mnesia:wait_for_tables([pgp_pubkey, pgp_uid, pgp_signature, pgp_issuer], 5000).
 
 import_stream(Data, Opts) ->
 	{atomic, ok} = mnesia:transaction(fun () ->
@@ -33,8 +39,9 @@ import_stream(Data, Opts) ->
 									  end).
 
 import_handler(primary_key, [{Subject, _}, KeyData | _], State) ->
-	KeyID = pgp_parse:key_id(Subject),
+	<<_:12/binary, IssuerID:8/binary>> = KeyID = pgp_parse:key_id(Subject),
 	mnesia:write(#pgp_pubkey{id = KeyID, data = KeyData}),
+	mnesia:write(#pgp_issuer{issuer_id = IssuerID, key_id = KeyID}),
 	State#import_ctx{key_id = KeyID};
 import_handler(subkey, [{Subject, _}, KeyData, _, {ParentSubject, _} | _], State) ->
 	KeyID = pgp_parse:key_id(Subject),
