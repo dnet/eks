@@ -62,9 +62,8 @@ decode_packet(?SIGNATURE_PACKET, <<?PGP_VERSION, SigType, PubKeyAlgo, HashAlgo,
 	Handler = ContextAfterUnhashed#decoder_ctx.handler,
 	HS = Handler(signature, [SigData], ContextAfterUnhashed#decoder_ctx.handler_state),
 	ContextAfterUnhashed#decoder_ctx{handler_state = HS};
-decode_packet(Tag, <<?PGP_VERSION, Timestamp:32/integer-big, Algorithm, KeyRest/binary>> = KeyData, Context)
-  when Tag =:= ?PUBKEY_PACKET; Tag =:= ?SUBKEY_PACKET ->
-	Key = decode_pubkey_algo(Algorithm, KeyRest),
+decode_packet(Tag, KeyData, Context) when Tag =:= ?PUBKEY_PACKET; Tag =:= ?SUBKEY_PACKET ->
+	{Timestamp, Key} = decode_public_key(KeyData),
 	Subject = <<16#99, (byte_size(KeyData)):16/integer-big, KeyData/binary>>,
 	Handler = Context#decoder_ctx.handler,
 	SK = {Subject, Key},
@@ -80,6 +79,10 @@ decode_packet(Tag, <<?PGP_VERSION, Timestamp:32/integer-big, Algorithm, KeyRest/
 decode_packet(?UID_PACKET, UID, C) ->
 	HS = (C#decoder_ctx.handler)(uid, [UID], C#decoder_ctx.handler_state),
 	C#decoder_ctx{uid = <<16#B4, (byte_size(UID)):32/integer-big, UID/binary>>, handler_state=HS}.
+
+decode_public_key(<<?PGP_VERSION, Timestamp:32/integer-big, Algorithm, KeyRest/binary>>) ->
+	Key = decode_pubkey_algo(Algorithm, KeyRest),
+	{Timestamp, Key}.
 
 hash_signature_packet(SigType, PubKeyAlgo, HashAlgo, HashedData, Context) ->
 	HashCtx = crypto:hash_init(pgp_to_crypto_hash_algo(HashAlgo)),
