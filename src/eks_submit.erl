@@ -10,6 +10,5 @@ allowed_methods(ReqData, State) -> {['POST'], ReqData, State}.
 process_post(ReqData, State) ->
 	QS = mochiweb_util:parse_qs(wrq:req_body(ReqData)),
 	{_, KeyText} = lists:keyfind("keytext", 1, QS),
-	Key = pgp_parse:decode_stream(list_to_binary(KeyText), [armor]),
-	io:format("K: ~p\n", [Key]),
+	pgp_keystore:import_stream(list_to_binary(KeyText), [armor]),
 	{true, ReqData, State}.
