@@ -176,6 +176,7 @@ pgp_to_crypto_hash_algo(?HASH_ALGO_SHA384) -> sha384;
 pgp_to_crypto_hash_algo(?HASH_ALGO_SHA512) -> sha512;
 pgp_to_crypto_hash_algo(?HASH_ALGO_SHA224) -> sha224.
 
+decode_pubkey_algo(?PK_ALGO_ELGAMAL, _) -> elgamal; %% encryption only -> don't care
 decode_pubkey_algo(?PK_ALGO_DSA, Data) ->
 	{P, QGY} = read_mpi(Data),
 	{Q, GY} = read_mpi(QGY),
