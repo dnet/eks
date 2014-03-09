@@ -1,5 +1,6 @@
 -module(pgp_parse).
 -export([decode_stream/2, decode_stream/1, key_id/1]).
+-include("OpenSSL.hrl").
 
 -define(OLD_PACKET_FORMAT, 2).
 -define(SIGNATURE_PACKET, 2).
@@ -113,6 +114,12 @@ verify_signature_packet(PubKeyAlgo, HashAlgo, Hash, Signature, SigType, Context)
 	CS = case PubKeyAlgo of
 		RSA when RSA =:= ?PK_ALGO_RSA_ES; RSA =:= ?PK_ALGO_RSA_S ->
 			{S, <<>>} = read_mpi(Signature), S;
+		?PK_ALGO_DSA ->
+			{R, Rest} = read_mpi(Signature),
+			{S, <<>>} = read_mpi(Rest),
+			{ok, Encoded} = 'OpenSSL':encode('DssSignature', #'DssSignature'{
+				r = binary:decode_unsigned(R, big), s = binary:decode_unsigned(S, big)}),
+			Encoded;
 		_ -> unknown %% XXX
 	end,
 	case SigType of
@@ -169,6 +176,12 @@ pgp_to_crypto_hash_algo(?HASH_ALGO_SHA384) -> sha384;
 pgp_to_crypto_hash_algo(?HASH_ALGO_SHA512) -> sha512;
 pgp_to_crypto_hash_algo(?HASH_ALGO_SHA224) -> sha224.
 
+decode_pubkey_algo(?PK_ALGO_DSA, Data) ->
+	{P, QGY} = read_mpi(Data),
+	{Q, GY} = read_mpi(QGY),
+	{G, Rest} = read_mpi(GY),
+	{Y, <<>>} = read_mpi(Rest),
+	{dss, [P, Q, G, Y]};
 decode_pubkey_algo(RSA, Data)
   when RSA =:= ?PK_ALGO_RSA_ES; RSA =:= ?PK_ALGO_RSA_E; RSA =:= ?PK_ALGO_RSA_S ->
 	{N, Rest} = read_mpi(Data),
