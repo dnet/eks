@@ -113,12 +113,10 @@ verify_signature_packet(PubKeyAlgo, HashAlgo, Hash, Signature, SigType, Context)
 	CHA = pgp_to_crypto_hash_algo(HashAlgo),
 	CS = case PubKeyAlgo of
 		RSA when RSA =:= ?PK_ALGO_RSA_ES; RSA =:= ?PK_ALGO_RSA_S ->
-			{S, <<>>} = read_mpi(Signature), S;
+			read_mpi(Signature);
 		?PK_ALGO_DSA ->
-			{R, Rest} = read_mpi(Signature),
-			{S, <<>>} = read_mpi(Rest),
-			{ok, Encoded} = 'OpenSSL':encode('DssSignature', #'DssSignature'{
-				r = binary:decode_unsigned(R, big), s = binary:decode_unsigned(S, big)}),
+			[R, S] = [binary:decode_unsigned(X, big) || X <- read_mpi(Signature, 2)],
+			{ok, Encoded} = 'OpenSSL':encode('DssSignature', #'DssSignature'{r = R, s = S}),
 			Encoded;
 		_ -> unknown %% XXX
 	end,
@@ -145,10 +143,13 @@ verify_signature_packet(PubKeyAlgo, HashAlgo, Hash, Signature, SigType, Context)
 		_ -> unknown
 	end.
 
-read_mpi(<<Length:16/integer-big, Rest/binary>>) ->
+read_mpi(Data) -> [Value] = read_mpi(Data, 1), Value.
+read_mpi(Data, Count) -> read_mpi(Data, Count, []).
+read_mpi(<<>>, 0, Acc) -> lists:reverse(Acc);
+read_mpi(<<Length:16/integer-big, Rest/binary>>, Count, Acc) ->
 	ByteLen = (Length + 7) div 8,
 	<<Data:ByteLen/binary, Trailer/binary>> = Rest,
-	{Data, Trailer}.
+	read_mpi(Trailer, Count - 1, [Data | Acc]).
 
 key_id(Subject) -> crypto:hash(sha, Subject).
 
@@ -178,13 +179,7 @@ pgp_to_crypto_hash_algo(?HASH_ALGO_SHA224) -> sha224.
 
 decode_pubkey_algo(?PK_ALGO_ELGAMAL, _) -> elgamal; %% encryption only -> don't care
 decode_pubkey_algo(?PK_ALGO_DSA, Data) ->
-	{P, QGY} = read_mpi(Data),
-	{Q, GY} = read_mpi(QGY),
-	{G, Rest} = read_mpi(GY),
-	{Y, <<>>} = read_mpi(Rest),
-	{dss, [P, Q, G, Y]};
+	{dss, read_mpi(Data, 4)};
 decode_pubkey_algo(RSA, Data)
   when RSA =:= ?PK_ALGO_RSA_ES; RSA =:= ?PK_ALGO_RSA_E; RSA =:= ?PK_ALGO_RSA_S ->
-	{N, Rest} = read_mpi(Data),
-	{E, <<>>} = read_mpi(Rest),
-	{rsa, [E, N]}.
+	{rsa, lists:reverse(read_mpi(Data, 2))}.
