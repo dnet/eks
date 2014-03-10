@@ -1,15 +1,21 @@
 -module(pgp_keystore).
--export([import_stream/2, init_schema/0, get_issuer_keys/1]).
+-export([import_stream/2, init_schema/0, find_keys/1]).
 
--record(pgp_pubkey, {id, data, parent_id}).
+-define(ID_BYTES, 20).
+-define(ID64_BYTES, 8).
+-define(ID32_BYTES, 4).
+
+-include_lib("stdlib/include/qlc.hrl").
+
+-record(pgp_pubkey, {id, id64, id32, data, parent_id}).
 -record(pgp_uid, {key_id, uid}).
 -record(pgp_signature, {uid, data}).
--record(pgp_issuer, {issuer_id, key_id}).
 
 -record(import_ctx, {key_id, uid}).
 
 init_schema() ->
-	case mnesia:create_table(pgp_pubkey, [{index, [#pgp_pubkey.parent_id]},
+	case mnesia:create_table(pgp_pubkey, [
+		{index, [#pgp_pubkey.id64, #pgp_pubkey.id32, #pgp_pubkey.parent_id]},
 		{attributes, record_info(fields, pgp_pubkey)}, {disc_copies, [node()]}]) of
 		{atomic, ok} -> ok;
 		{aborted, {already_exists, pgp_pubkey}} -> ok
@@ -24,12 +30,7 @@ init_schema() ->
 		{atomic, ok} -> ok;
 		{aborted, {already_exists, pgp_signature}} -> ok
 	end,
-	case mnesia:create_table(pgp_issuer, [{type, bag},
-		{attributes, record_info(fields, pgp_issuer)}, {disc_copies, [node()]}]) of
-		{atomic, ok} -> ok;
-		{aborted, {already_exists, pgp_issuer}} -> ok
-	end,
-	ok = mnesia:wait_for_tables([pgp_pubkey, pgp_uid, pgp_signature, pgp_issuer], 5000).
+	ok = mnesia:wait_for_tables([pgp_pubkey, pgp_uid, pgp_signature], 5000).
 
 import_stream(Data, Opts) ->
 	{atomic, ok} = mnesia:transaction(fun () ->
@@ -39,9 +40,9 @@ import_stream(Data, Opts) ->
 									  end).
 
 import_handler(primary_key, [{Subject, _}, KeyData | _], State) ->
-	<<_:12/binary, IssuerID:8/binary>> = KeyID = pgp_parse:key_id(Subject),
-	mnesia:write(#pgp_pubkey{id = KeyID, data = KeyData}),
-	mnesia:write(#pgp_issuer{issuer_id = IssuerID, key_id = KeyID}),
+	<<_:12/binary, ID64:?ID64_BYTES/binary>> = KeyID = pgp_parse:key_id(Subject),
+	<<_:4/binary, ID32:?ID32_BYTES/binary>> = ID64,
+	mnesia:write(#pgp_pubkey{id = KeyID, id64 = ID64, id32 = ID32, data = KeyData}),
 	State#import_ctx{key_id = KeyID};
 import_handler(subkey, [{Subject, _}, KeyData, _, {ParentSubject, _} | _], State) ->
 	KeyID = pgp_parse:key_id(Subject),
@@ -56,11 +57,16 @@ import_handler(signature, [Data | _], State) ->
 	State;
 import_handler(_, _, State) -> State.
 
-get_issuer_keys(IssuerID) ->
+find_keys(KeyID) ->
 	{atomic, Keys} = mnesia:transaction(fun () ->
-		case mnesia:read(pgp_issuer, IssuerID) of
-			[] = Empty -> Empty;
-			Issuers -> [PK#pgp_pubkey.data || I <- Issuers, PK <- mnesia:read(pgp_pubkey, I#pgp_issuer.key_id)]
+		case byte_size(KeyID) of
+			?ID32_BYTES -> mnesia:index_read(pgp_pubkey, KeyID, #pgp_pubkey.id32);
+			?ID64_BYTES -> mnesia:index_read(pgp_pubkey, KeyID, #pgp_pubkey.id64);
+			?ID_BYTES -> mnesia:read(pgp_pubkey, KeyID);
+			Len ->
+				PosLen = {?ID_BYTES - Len, Len},
+				qlc:eval(qlc:q([K || K <- mnesia:table(pgp_pubkey),
+									 binary:part(K#pgp_pubkey.id, PosLen) =:= KeyID]))
 		end
 	end),
-	Keys.
+	[K#pgp_pubkey.data || K <- Keys].

@@ -131,7 +131,7 @@ verify_signature_packet(PubKeyAlgo, HashAlgo, Hash, Signature, SigType, Context)
 				true ->
 					true = crypto:verify(CPA, CHA, {digest, Hash}, CS, CryptoPK);
 				false ->
-					case pgp_keystore:get_issuer_keys(I) of
+					case pgp_keystore:find_keys(I) of
 						[] -> no_issuer;
 						Keys ->
 							true = lists:any(fun (Key) ->
