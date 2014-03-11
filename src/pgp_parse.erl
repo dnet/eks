@@ -41,8 +41,15 @@ decode_stream(Data, Opts) ->
 	decode_packets(Decoded, #decoder_ctx{handler = Handler, handler_state = HS}).
 
 encode_key(KeyData) ->
-	encode_packet(?PUBKEY_PACKET, KeyData).
-	%%ID = key_id(KeyData). TODO encode UIDs and signatures
+	ID = key_id(c14n_pubkey(KeyData)),
+	PK = encode_packet(?PUBKEY_PACKET, KeyData),
+	Signatures = <<
+		<<(encode_packet(?UID_PACKET, UID))/binary, (encode_signatures(US))/binary>>
+		|| {UID, US} <- pgp_keystore:get_signatures(ID) >>,
+	<<PK/binary, Signatures/binary>>.
+
+encode_signatures(Signatures) ->
+	<< <<(encode_packet(?SIGNATURE_PACKET, S))/binary>> || S <- Signatures >>.
 
 encode_packet(Tag, Body) ->
 	{LenBits, Length} = case byte_size(Body) of
