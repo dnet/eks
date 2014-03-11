@@ -35,11 +35,11 @@ import_stream(Data, Opts) ->
 
 import_handler(primary_key, [{Subject, _}, KeyData | _], State) ->
 	KeyID = store_pubkey(#pgp_pubkey{data = KeyData}, Subject),
-	State#import_ctx{key_id = KeyID};
+	State#import_ctx{key_id = KeyID, uid = undefined};
 import_handler(subkey, [{Subject, _}, KeyData, _, {ParentSubject, _} | _], State) ->
 	ParentKeyID = pgp_parse:key_id(ParentSubject),
 	KeyID = store_pubkey(#pgp_pubkey{data = KeyData, parent_id = ParentKeyID}, Subject),
-	State#import_ctx{key_id = KeyID};
+	State#import_ctx{key_id = KeyID, uid = undefined};
 import_handler(uid, [UID | _], State) ->
 	State#import_ctx{uid = UID};
 import_handler(signature, [Data | _], State) ->

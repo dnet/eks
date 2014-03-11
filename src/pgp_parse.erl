@@ -51,6 +51,7 @@ encode_key(KeyData) ->
 encode_signatures(Signatures) ->
 	<< <<(encode_packet(?SIGNATURE_PACKET, S))/binary>> || S <- Signatures >>.
 
+encode_packet(_, undefined) -> <<>>;
 encode_packet(Tag, Body) ->
 	{LenBits, Length} = case byte_size(Body) of
 		S when S < 16#100       -> {0, <<S>>};
@@ -91,10 +92,10 @@ decode_packet(Tag, KeyData, Context) when Tag =:= ?PUBKEY_PACKET; Tag =:= ?SUBKE
 	case Tag of
 		?PUBKEY_PACKET ->
 			HS = Handler(primary_key, [SK, KeyData, Timestamp], PHS),
-			Context#decoder_ctx{primary_key = SK, handler_state = HS};
+			Context#decoder_ctx{primary_key = SK, handler_state = HS, uid = undefined};
 		?SUBKEY_PACKET ->
 			HS = Handler(subkey, [SK, KeyData, Timestamp, Context#decoder_ctx.primary_key], PHS),
-			Context#decoder_ctx{subkey = SK, handler_state = HS}
+			Context#decoder_ctx{subkey = SK, handler_state = HS, uid = undefined}
 	end;
 decode_packet(?UID_PACKET, UID, C) ->
 	HS = (C#decoder_ctx.handler)(uid, [UID], C#decoder_ctx.handler_state),
