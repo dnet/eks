@@ -62,11 +62,7 @@ find_keys(KeyID) ->
 		case byte_size(KeyID) of
 			?ID32_BYTES -> mnesia:index_read(pgp_pubkey, KeyID, #pgp_pubkey.id32);
 			?ID64_BYTES -> mnesia:index_read(pgp_pubkey, KeyID, #pgp_pubkey.id64);
-			?ID_BYTES -> mnesia:read(pgp_pubkey, KeyID);
-			Len ->
-				PosLen = {?ID_BYTES - Len, Len},
-				qlc:eval(qlc:q([K || K <- mnesia:table(pgp_pubkey),
-									 binary:part(K#pgp_pubkey.id, PosLen) =:= KeyID]))
+			?ID_BYTES -> mnesia:read(pgp_pubkey, KeyID)
 		end
 	end),
 	[K#pgp_pubkey.data || K <- Keys].
