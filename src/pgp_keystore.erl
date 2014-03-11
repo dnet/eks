@@ -8,8 +8,7 @@
 -include_lib("stdlib/include/qlc.hrl").
 
 -record(pgp_pubkey, {id, id64, id32, data, parent_id}).
--record(pgp_uid, {key_id, uid}).
--record(pgp_signature, {uid, data}).
+-record(pgp_signature, {key_id, uid, data}).
 
 -record(import_ctx, {key_id, uid}).
 
@@ -20,17 +19,12 @@ init_schema() ->
 		{atomic, ok} -> ok;
 		{aborted, {already_exists, pgp_pubkey}} -> ok
 	end,
-	case mnesia:create_table(pgp_uid, [{type, bag},
-		{attributes, record_info(fields, pgp_uid)}, {disc_copies, [node()]}]) of
-		{atomic, ok} -> ok;
-		{aborted, {already_exists, pgp_uid}} -> ok
-	end,
 	case mnesia:create_table(pgp_signature, [{type, bag},
 		{attributes, record_info(fields, pgp_signature)}, {disc_copies, [node()]}]) of
 		{atomic, ok} -> ok;
 		{aborted, {already_exists, pgp_signature}} -> ok
 	end,
-	ok = mnesia:wait_for_tables([pgp_pubkey, pgp_uid, pgp_signature], 5000).
+	ok = mnesia:wait_for_tables([pgp_pubkey, pgp_signature], 5000).
 
 import_stream(Data, Opts) ->
 	{atomic, ok} = mnesia:transaction(fun () ->
@@ -50,10 +44,9 @@ import_handler(subkey, [{Subject, _}, KeyData, _, {ParentSubject, _} | _], State
 	mnesia:write(#pgp_pubkey{id = KeyID, data = KeyData, parent_id = ParentKeyID}),
 	State#import_ctx{key_id = KeyID};
 import_handler(uid, [UID | _], State) ->
-	mnesia:write(#pgp_uid{key_id = State#import_ctx.key_id, uid = UID}),
 	State#import_ctx{uid = UID};
 import_handler(signature, [Data | _], State) ->
-	mnesia:write(#pgp_signature{uid = State#import_ctx.uid, data = Data}),
+	mnesia:write(#pgp_signature{key_id = State#import_ctx.key_id, uid = State#import_ctx.uid, data = Data}),
 	State;
 import_handler(_, _, State) -> State.
 
