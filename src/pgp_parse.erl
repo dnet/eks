@@ -78,9 +78,8 @@ decode_packet(?SIGNATURE_PACKET, <<?PGP_VERSION, SigType, PubKeyAlgo, HashAlgo,
 	ContextAfterUnhashed#decoder_ctx{handler_state = HS};
 decode_packet(Tag, KeyData, Context) when Tag =:= ?PUBKEY_PACKET; Tag =:= ?SUBKEY_PACKET ->
 	{Timestamp, Key} = decode_public_key(KeyData),
-	Subject = <<16#99, (byte_size(KeyData)):16/integer-big, KeyData/binary>>,
 	Handler = Context#decoder_ctx.handler,
-	SK = {Subject, Key},
+	SK = {c14n_pubkey(KeyData), Key},
 	PHS = Context#decoder_ctx.handler_state,
 	case Tag of
 		?PUBKEY_PACKET ->
@@ -93,6 +92,8 @@ decode_packet(Tag, KeyData, Context) when Tag =:= ?PUBKEY_PACKET; Tag =:= ?SUBKE
 decode_packet(?UID_PACKET, UID, C) ->
 	HS = (C#decoder_ctx.handler)(uid, [UID], C#decoder_ctx.handler_state),
 	C#decoder_ctx{uid = <<16#B4, (byte_size(UID)):32/integer-big, UID/binary>>, handler_state=HS}.
+
+c14n_pubkey(KeyData) -> <<16#99, (byte_size(KeyData)):16/integer-big, KeyData/binary>>.
 
 decode_public_key(<<?PGP_VERSION, Timestamp:32/integer-big, Algorithm, KeyRest/binary>>) ->
 	Key = decode_pubkey_algo(Algorithm, KeyRest),
