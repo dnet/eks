@@ -9,7 +9,7 @@ to_html(ReqData, Ctx) ->
 	SearchTerm = wrq:get_qs_value("search", ReqData),
 	case wrq:get_qs_value("op", ReqData) of
 		"get" ->
-			case pgp_keystore:find_keys(parse_keyid(SearchTerm)) of
+			case pgp_keystore:find_keys(parse_keyid(SearchTerm), [parents]) of
 				[] ->
 					{ok, HTML} = no_results_dtl:render([{title, "No results found"}]),
 					Headers = [{"Content-Type", "text/html; charset=utf-8"}],
