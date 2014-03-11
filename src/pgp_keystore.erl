@@ -34,9 +34,7 @@ import_stream(Data, Opts) ->
 									  end).
 
 import_handler(primary_key, [{Subject, _}, KeyData | _], State) ->
-	<<_:12/binary, ID64:?ID64_BYTES/binary>> = KeyID = pgp_parse:key_id(Subject),
-	<<_:4/binary, ID32:?ID32_BYTES/binary>> = ID64,
-	mnesia:write(#pgp_pubkey{id = KeyID, id64 = ID64, id32 = ID32, data = KeyData}),
+	KeyID = store_pubkey(#pgp_pubkey{data = KeyData}, Subject),
 	State#import_ctx{key_id = KeyID};
 import_handler(subkey, [{Subject, _}, KeyData, _, {ParentSubject, _} | _], State) ->
 	KeyID = pgp_parse:key_id(Subject),
@@ -49,6 +47,12 @@ import_handler(signature, [Data | _], State) ->
 	mnesia:write(#pgp_signature{key_id = State#import_ctx.key_id, uid = State#import_ctx.uid, data = Data}),
 	State;
 import_handler(_, _, State) -> State.
+
+store_pubkey(PK, Subject) ->
+	<<_:12/binary, ID64:?ID64_BYTES/binary>> = KeyID = pgp_parse:key_id(Subject),
+	<<_:4/binary, ID32:?ID32_BYTES/binary>> = ID64,
+	mnesia:write(PK#pgp_pubkey{id = KeyID, id64 = ID64, id32 = ID32}),
+	KeyID.
 
 find_keys(KeyID) ->
 	{atomic, Keys} = mnesia:transaction(fun () ->
