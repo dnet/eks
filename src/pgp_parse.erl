@@ -46,9 +46,9 @@ encode_key(KeyData) ->
 
 encode_packet(Tag, Body) ->
 	{LenBits, Length} = case byte_size(Body) of
-		Small when Small < 16#100 -> {0, <<Small>>};
-		Medium when Medium < 16#10000 -> {1, <<Medium:16/integer-big>>};
-		Large when Large < 16#100000000 -> {2, <<Large:32/integer-big>>}
+		S when S < 16#100       -> {0, <<S>>};
+		M when M < 16#10000     -> {1, <<M:16/integer-big>>};
+		L when L < 16#100000000 -> {2, <<L:32/integer-big>>}
 	end,
 	<<?OLD_PACKET_FORMAT:2/integer-big, Tag:4/integer-big,
 	  LenBits:2/integer-big, Length/binary, Body/binary>>.
