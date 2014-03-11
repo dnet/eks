@@ -15,8 +15,8 @@ to_html(ReqData, Ctx) ->
 					Headers = [{"Content-Type", "text/html; charset=utf-8"}],
 					RD404 = wrq:set_resp_body(HTML, wrq:set_resp_headers(Headers, ReqData)),
 					{{halt, 404}, RD404, Ctx};
-				[Key] ->
-					Payload = pgp_armor:encode(pgp_parse:encode_key(Key)),
+				Keys ->
+					Payload = pgp_armor:encode(<< <<(pgp_parse:encode_key(K))/binary>> || K <- Keys >>),
 					Title = ["Public Key Server -- Get ``", string:to_lower(SearchTerm), " ''"],
 					{ok, HTML} = results_dtl:render([{payload, Payload}, {title, Title}]),
 					{HTML, ReqData, Ctx}
