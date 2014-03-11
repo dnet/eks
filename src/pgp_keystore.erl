@@ -1,5 +1,5 @@
 -module(pgp_keystore).
--export([import_stream/2, init_schema/0, find_keys/1, get_signatures/1, get_subkeys/1]).
+-export([import_stream/2, init_schema/0, find_keys/1, find_keys/2, get_signatures/1, get_subkeys/1]).
 
 -define(ID_BYTES, 20).
 -define(ID64_BYTES, 8).
@@ -53,12 +53,20 @@ store_pubkey(PK, Subject) ->
 	mnesia:write(PK#pgp_pubkey{id = KeyID, id64 = ID64, id32 = ID32}),
 	KeyID.
 
-find_keys(KeyID) ->
+find_keys(KeyID) -> find_keys(KeyID, []).
+find_keys(KeyID, Opts) ->
 	{atomic, Keys} = mnesia:transaction(fun () ->
-		case byte_size(KeyID) of
+		FoundKeys = case byte_size(KeyID) of
 			?ID32_BYTES -> mnesia:index_read(pgp_pubkey, KeyID, #pgp_pubkey.id32);
 			?ID64_BYTES -> mnesia:index_read(pgp_pubkey, KeyID, #pgp_pubkey.id64);
 			?ID_BYTES -> mnesia:read(pgp_pubkey, KeyID)
+		end,
+		case proplists:get_bool(parents, Opts) of
+			true -> [case K#pgp_pubkey.parent_id of
+				undefined -> K;
+				Parent -> [P] = mnesia:read(pgp_pubkey, Parent), P
+			end || K <- FoundKeys];
+			false -> FoundKeys
 		end
 	end),
 	[K#pgp_pubkey.data || K <- Keys].
