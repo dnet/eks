@@ -11,7 +11,7 @@
 decode(KeyText) ->
 	{KeyBody64, CRC} = keylines(binary:split(KeyText, <<$\n>>, [global])),
 	KeyBody = base64:decode(KeyBody64),
-	CRC = base64:encode(<<(crc24(KeyBody)):24/integer-big>>),
+	CRC = crc24b64(KeyBody),
 	KeyBody.
 
 keylines([?PGP_PUBKEY_HEADER | Rest]) -> keylines(Rest, <<>>, no_sum);
@@ -24,6 +24,8 @@ keylines([<<?PGP_VERSION_PREFIX, _/binary>> | Rest], Acc, CRC) -> keylines(Rest,
 keylines([<<$=, CRC/binary>> | Rest], Acc, _) -> keylines(Rest, Acc, CRC);
 keylines([?PGP_PUBKEY_FOOTER | _], Acc, CRC) -> {Acc, CRC};
 keylines([Line | Rest], Acc, CRC) -> keylines(Rest, <<Acc/binary, Line/binary>>, CRC).
+
+crc24b64(Body) -> base64:encode(<<(crc24(Body)):24/integer-big>>).
 
 crc24(Data) -> crc24(Data, ?CRC24_INIT).
 crc24(<<>>, Acc) -> Acc;
