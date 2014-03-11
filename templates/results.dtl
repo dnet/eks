@@ -1,0 +1,6 @@
+{% extends "eks_layout.dtl" %}
+{% block content %}
+<pre>
+{{ payload }}
+</pre>
+{% endblock %}
