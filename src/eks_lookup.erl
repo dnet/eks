@@ -20,8 +20,14 @@ to_html(ReqData, Ctx) ->
 					Title = ["Public Key Server -- Get ``", string:to_lower(SearchTerm), " ''"],
 					{ok, HTML} = results_dtl:render([{payload, Payload}, {title, Title}]),
 					{HTML, ReqData, Ctx}
-			end
-		%% "search" -> TODO
+			end;
+		"index" ->
+			Title = ["Search results for '", SearchTerm, "'"],
+			Results = [{"ID32ID32", "ID64ID64ID64ID64", "YYYY-MM-DD", "4096R",
+						["First UID for testing <test@test.hu>",
+						 "Second UID in another row <foo@bar.hu>"]}], %% TODO use keystore
+			{ok, HTML} = index_dtl:render([{title, Title}, {results, Results}]),
+			{HTML, ReqData, Ctx}
 	end.
 
 parse_keyid([$0, $x | HexID]) -> mochihex:to_bin(HexID).

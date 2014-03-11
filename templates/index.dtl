@@ -1,0 +1,9 @@
+{% extends "eks_layout.dtl" %}
+{% block content %}
+<pre>Type bits/keyID     Date       User ID
+</pre>
+{% for id32, id64, timestamp, keyinfo, uids in results %}<hr /><pre>
+pub  {{ keyinfo }}/<a href="/pks/lookup?op=get&amp;search=0x{{ id64 }}">{{ id32 }}</a> {{ timestamp }} {% for uid in uids %}{% if forloop.first %}<a href="/pks/lookup?op=vindex&amp;search=0x{{ id64 }}">{{ uid }}</a>{% else %}                               {{ uid }}{% endif %}
+{% endfor %}
+</pre>{% endfor %}
+{% endblock %}
