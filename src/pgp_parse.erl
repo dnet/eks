@@ -40,13 +40,15 @@ decode_stream(Data, Opts) ->
 	HS = proplists:get_value(handler_state, Opts),
 	decode_packets(Decoded, #decoder_ctx{handler = Handler, handler_state = HS}).
 
-encode_key(KeyData) ->
+encode_key(KeyData) -> encode_key(KeyData, ?PUBKEY_PACKET).
+encode_key(KeyData, KeyTag) ->
 	ID = key_id(c14n_pubkey(KeyData)),
-	PK = encode_packet(?PUBKEY_PACKET, KeyData),
+	PK = encode_packet(KeyTag, KeyData),
 	Signatures = <<
 		<<(encode_packet(?UID_PACKET, UID))/binary, (encode_signatures(US))/binary>>
 		|| {UID, US} <- pgp_keystore:get_signatures(ID) >>,
-	<<PK/binary, Signatures/binary>>.
+	Subkeys = << <<(encode_key(SK, ?SUBKEY_PACKET))/binary>> || SK <- pgp_keystore:get_subkeys(ID) >>,
+	<<PK/binary, Signatures/binary, Subkeys/binary>>.
 
 encode_signatures(Signatures) ->
 	<< <<(encode_packet(?SIGNATURE_PACKET, S))/binary>> || S <- Signatures >>.

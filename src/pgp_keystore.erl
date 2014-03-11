@@ -1,5 +1,5 @@
 -module(pgp_keystore).
--export([import_stream/2, init_schema/0, find_keys/1, get_signatures/1]).
+-export([import_stream/2, init_schema/0, find_keys/1, get_signatures/1, get_subkeys/1]).
 
 -define(ID_BYTES, 20).
 -define(ID64_BYTES, 8).
@@ -69,3 +69,8 @@ get_signatures(KeyID) ->
 		fun (#pgp_signature{uid = U, data = D}, A) -> dict:append(U, D, A) end,
 		dict:new(), Signatures),
 	dict:to_list(Grouped).
+
+get_subkeys(KeyID) ->
+	{atomic, Keys} = mnesia:transaction(fun () ->
+		mnesia:index_read(pgp_pubkey, KeyID, #pgp_pubkey.parent_id) end),
+	[K#pgp_pubkey.data || K <- Keys].
