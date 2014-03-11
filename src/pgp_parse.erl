@@ -1,5 +1,5 @@
 -module(pgp_parse).
--export([decode_stream/2, decode_stream/1, key_id/1]).
+-export([decode_stream/2, decode_stream/1, key_id/1, encode_key/1]).
 -include("OpenSSL.hrl").
 
 -define(OLD_PACKET_FORMAT, 2).
@@ -39,6 +39,19 @@ decode_stream(Data, Opts) ->
 	Handler = proplists:get_value(handler, Opts, fun (_, _, D) -> D end),
 	HS = proplists:get_value(handler_state, Opts),
 	decode_packets(Decoded, #decoder_ctx{handler = Handler, handler_state = HS}).
+
+encode_key(KeyData) ->
+	encode_packet(?PUBKEY_PACKET, KeyData).
+	%%ID = key_id(KeyData). TODO encode UIDs and signatures
+
+encode_packet(Tag, Body) ->
+	{LenBits, Length} = case byte_size(Body) of
+		Small when Small < 16#100 -> {0, <<Small>>};
+		Medium when Medium < 16#10000 -> {1, <<Medium:16/integer-big>>};
+		Large when Large < 16#100000000 -> {2, <<Large:32/integer-big>>}
+	end,
+	<<?OLD_PACKET_FORMAT:2/integer-big, Tag:4/integer-big,
+	  LenBits:2/integer-big, Length/binary, Body/binary>>.
 
 decode_packets(<<>>, _) -> ok;
 decode_packets(<<?OLD_PACKET_FORMAT:2/integer-big, Tag:4/integer-big,
