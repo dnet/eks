@@ -4,21 +4,25 @@
 -define(CRC24_INIT, 16#B704CE).
 -define(CRC24_POLY, 16#1864CFB).
 
+-define(PGP_PUBKEY_HEADER, <<"-----BEGIN PGP PUBLIC KEY BLOCK-----">>).
+-define(PGP_PUBKEY_FOOTER, <<"-----END PGP PUBLIC KEY BLOCK-----">>).
+-define(PGP_VERSION_PREFIX, "Version: ").
+
 decode(KeyText) ->
 	{KeyBody64, CRC} = keylines(binary:split(KeyText, <<$\n>>, [global])),
 	KeyBody = base64:decode(KeyBody64),
 	CRC = base64:encode(<<(crc24(KeyBody)):24/integer-big>>),
 	KeyBody.
 
-keylines([<<"-----BEGIN PGP PUBLIC KEY BLOCK-----">> | Rest]) -> keylines(Rest, <<>>, no_sum);
+keylines([?PGP_PUBKEY_HEADER | Rest]) -> keylines(Rest, <<>>, no_sum);
 keylines([_ | Lines]) -> keylines(Lines);
 keylines([]) -> missing_header.
 
 keylines([], Acc, CRC) -> {Acc, CRC};
 keylines([<<>> | Rest], Acc, CRC) -> keylines(Rest, Acc, CRC);
-keylines([<<"Version: ", _/binary>> | Rest], Acc, CRC) -> keylines(Rest, Acc, CRC);
+keylines([<<?PGP_VERSION_PREFIX, _/binary>> | Rest], Acc, CRC) -> keylines(Rest, Acc, CRC);
 keylines([<<$=, CRC/binary>> | Rest], Acc, _) -> keylines(Rest, Acc, CRC);
-keylines([<<"-----END PGP PUBLIC KEY BLOCK-----">> | _], Acc, CRC) -> {Acc, CRC};
+keylines([?PGP_PUBKEY_FOOTER | _], Acc, CRC) -> {Acc, CRC};
 keylines([Line | Rest], Acc, CRC) -> keylines(Rest, <<Acc/binary, Line/binary>>, CRC).
 
 crc24(Data) -> crc24(Data, ?CRC24_INIT).
