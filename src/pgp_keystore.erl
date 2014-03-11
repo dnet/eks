@@ -37,9 +37,8 @@ import_handler(primary_key, [{Subject, _}, KeyData | _], State) ->
 	KeyID = store_pubkey(#pgp_pubkey{data = KeyData}, Subject),
 	State#import_ctx{key_id = KeyID};
 import_handler(subkey, [{Subject, _}, KeyData, _, {ParentSubject, _} | _], State) ->
-	KeyID = pgp_parse:key_id(Subject),
 	ParentKeyID = pgp_parse:key_id(ParentSubject),
-	mnesia:write(#pgp_pubkey{id = KeyID, data = KeyData, parent_id = ParentKeyID}),
+	KeyID = store_pubkey(#pgp_pubkey{data = KeyData, parent_id = ParentKeyID}, Subject),
 	State#import_ctx{key_id = KeyID};
 import_handler(uid, [UID | _], State) ->
 	State#import_ctx{uid = UID};
