@@ -1,5 +1,5 @@
 -module(pgp_parse).
--export([decode_stream/2, decode_stream/1, key_id/1, encode_key/1]).
+-export([decode_stream/2, decode_stream/1, key_id/1, encode_key/1, decode_public_key/1, c14n_pubkey/1]).
 -include("OpenSSL.hrl").
 
 -define(OLD_PACKET_FORMAT, 2).
