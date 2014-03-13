@@ -1,5 +1,6 @@
 -module(pgp_keystore).
--export([import_stream/2, init_schema/0, find_keys/1, find_keys/2, get_signatures/1, get_subkeys/1]).
+-export([import_stream/2, init_schema/0, find_keys/1, find_keys/2,
+		 get_signatures/1, get_subkeys/1, short_ids/1, search_keys/1]).
 
 -define(ID_BYTES, 20).
 -define(ID64_BYTES, 8).
@@ -74,6 +75,15 @@ find_keys(KeyID, Opts) ->
 		end
 	end),
 	[K#pgp_pubkey.data || K <- Keys].
+
+search_keys(Text) ->
+	P = binary:compile_pattern(Text),
+	{atomic, KeyGroups} = mnesia:transaction(fun () ->
+		KeyIDs = qlc:eval(qlc:q([S#pgp_signature.key_id || S <- mnesia:table(pgp_signature),
+			S#pgp_signature.uid =/= undefined, binary:match(S#pgp_signature.uid, P) =/= nomatch], [unique])),
+		[mnesia:read(pgp_pubkey, KeyID) || KeyID <- KeyIDs]
+	end),
+	[K#pgp_pubkey.data || KeyGroup <- KeyGroups, K <- KeyGroup].
 
 get_signatures(KeyID) ->
 	{atomic, Signatures} = mnesia:transaction(fun () -> mnesia:read(pgp_signature, KeyID) end),
