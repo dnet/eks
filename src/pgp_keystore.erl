@@ -48,10 +48,14 @@ import_handler(signature, [Data | _], State) ->
 import_handler(_, _, State) -> State.
 
 store_pubkey(PK, Subject) ->
-	<<_:12/binary, ID64:?ID64_BYTES/binary>> = KeyID = pgp_parse:key_id(Subject),
-	<<_:4/binary, ID32:?ID32_BYTES/binary>> = ID64,
+	KeyID = pgp_parse:key_id(Subject),
+	{ID32, ID64} = short_ids(KeyID),
 	mnesia:write(PK#pgp_pubkey{id = KeyID, id64 = ID64, id32 = ID32}),
 	KeyID.
+
+short_ids(<<_:12/binary, ID64:?ID64_BYTES/binary>>) ->
+	<<_:4/binary, ID32:?ID32_BYTES/binary>> = ID64,
+	{ID32, ID64}.
 
 find_keys(KeyID) -> find_keys(KeyID, []).
 find_keys(KeyID, Opts) ->
