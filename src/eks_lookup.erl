@@ -22,7 +22,7 @@ to_html(ReqData, Ctx) ->
 					{HTML, ReqData, Ctx}
 			end;
 		"index" ->
-			Title = ["Search results for '", SearchTerm, "'"],
+			Title = ["Search results for '", string:to_lower(SearchTerm), "'"],
 			KeysByID = try pgp_keystore:find_keys(parse_keyid(SearchTerm), [parents]) of
 				K -> K
 			catch
