@@ -100,7 +100,10 @@ decode_packet(?SIGNATURE_PACKET, <<?PGP_VERSION, SigType, PubKeyAlgo, HashAlgo,
 								   HashedLen:16/integer-big, HashedData:HashedLen/binary,
 								   UnhashedLen:16/integer-big, UnhashedData:UnhashedLen/binary,
 								   HashLeft16:2/binary, Signature/binary>> = SigData, Context) ->
-	Expected = hash_signature_packet(SigType, PubKeyAlgo, HashAlgo, HashedData, Context),
+	Expected = case Context#decoder_ctx.skip_sig_check of
+		true -> <<HashLeft16:2/binary>>;
+		false -> hash_signature_packet(SigType, PubKeyAlgo, HashAlgo, HashedData, Context)
+	end,
 	<<HashLeft16:2/binary, _/binary>> = Expected,
 	ContextAfterHashed = decode_signed_subpackets(HashedData, Context),
 	ContextAfterUnhashed = decode_signed_subpackets(UnhashedData, ContextAfterHashed),
@@ -162,6 +165,7 @@ hash_signature_packet(SigType, PubKeyAlgo, HashAlgo, HashedData, Context) ->
 	Trailer = <<?PGP_VERSION, 16#FF, (byte_size(FinalData)):32/integer-big>>,
 	crypto:hash_final(crypto:hash_update(crypto:hash_update(FinalCtx, FinalData), Trailer)).
 
+verify_signature_packet(_, _, _, _, _, #decoder_ctx{skip_sig_check = true}) -> ok;
 verify_signature_packet(PubKeyAlgo, HashAlgo, Hash, Signature, SigType, Context) ->
 	CHA = pgp_to_crypto_hash_algo(HashAlgo),
 	CS = case PubKeyAlgo of
