@@ -3,6 +3,8 @@
 -include("OpenSSL.hrl").
 
 -define(OLD_PACKET_FORMAT, 2).
+-define(NEW_PACKET_FORMAT, 3).
+
 -define(SIGNATURE_PACKET, 2).
 -define(PUBKEY_PACKET, 6).
 -define(UID_PACKET, 13).
@@ -64,6 +66,10 @@ encode_packet(Tag, Body) ->
 	  LenBits:2/integer-big, Length/binary, Body/binary>>.
 
 decode_packets(<<>>, _) -> ok;
+decode_packets(<<?NEW_PACKET_FORMAT:2/integer-big, Tag:6/integer-big, Rest/binary>>, Context) ->
+	{PacketData, S2Rest} = decode_new_packet(Rest),
+	NewContext = decode_packet(Tag, PacketData, Context),
+	decode_packets(S2Rest, NewContext);
 decode_packets(<<?OLD_PACKET_FORMAT:2/integer-big, Tag:4/integer-big,
 				LenBits:2/integer-big, Body/binary>>, Context) ->
 	{PacketData, S2Rest} = case LenBits of
@@ -73,6 +79,15 @@ decode_packets(<<?OLD_PACKET_FORMAT:2/integer-big, Tag:4/integer-big,
 	end,
 	NewContext = decode_packet(Tag, PacketData, Context),
 	decode_packets(S2Rest, NewContext).
+
+decode_new_packet(<<Length, Payload:Length/binary, Rest/binary>>) when Length < 192 ->
+	{Payload, Rest};
+decode_new_packet(<<LengthHigh, LengthLow, PayloadRest/binary>>) when LengthHigh < 255 ->
+	Length = ((LengthHigh - 192) bsl 8) bor LengthLow + 192,
+	<<Payload:Length/binary, Rest/binary>> = PayloadRest,
+	{Payload, Rest};
+decode_new_packet(<<255, Length:32/integer-big, Payload:Length/binary, Rest/binary>>) ->
+	{Payload, Rest}.
 
 decode_packet(?SIGNATURE_PACKET, <<?PGP_VERSION, SigType, PubKeyAlgo, HashAlgo,
 								   HashedLen:16/integer-big, HashedData:HashedLen/binary,
