@@ -115,9 +115,17 @@ c14n_uid(UID) -> list_to_binary(string:to_lower(binary_to_list(UID))).
 
 get_signatures(KeyID) ->
 	{atomic, Signatures} = mnesia:transaction(fun () ->
+		FullKeyID = case byte_size(KeyID) of
+			?ID_BYTES -> KeyID;
+			?ID64_BYTES ->
+				case mnesia:index_read(pgp_pubkey, KeyID, #pgp_pubkey.id64) of
+					[Key] -> Key#pgp_pubkey.id;
+					[] -> no_pubkey
+				end
+		end,
 		Grouped = lists:foldl(
 			fun (#pgp_signature{uid_hash = U, data = D}, A) -> dict:append(U, D, A) end,
-			dict:new(), mnesia:read(pgp_signature, KeyID)),
+			dict:new(), mnesia:read(pgp_signature, FullKeyID)),
 		[{get_uid(Hash), Sigs} || {Hash, Sigs} <- dict:to_list(Grouped)]
 	end),
 	Signatures.
