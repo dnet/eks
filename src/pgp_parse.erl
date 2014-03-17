@@ -39,7 +39,8 @@
 -define(HASH_ALGO_SHA224, 11).
 
 -record(decoder_ctx, {primary_key, subkey, uid, user_attr, issuer, handler, handler_state,
-	sig_created, sig_expiration, key_expiration, policy_uri, skip_sig_check=false}).
+	sig_created, sig_expiration, key_expiration, policy_uri, skip_sig_check=false,
+	critical_subpacket=false}).
 
 decode_stream(Data) -> decode_stream(Data, []).
 decode_stream(Data, Opts) ->
@@ -242,7 +243,7 @@ decode_signed_subpackets(<<>>, Context) -> Context;
 decode_signed_subpackets(Packets, C) ->
 	{Payload, Rest} = decode_new_packet(Packets),
 	NC = decode_signed_subpacket(Payload, C),
-	decode_signed_subpackets(Rest, NC).
+	decode_signed_subpackets(Rest, NC#decoder_ctx{critical_subpacket = false}).
 
 decode_signed_subpacket(<<?SIG_CREATED_SUBPACKET, Timestamp:32/integer-big>>, C) ->
 	C#decoder_ctx{sig_created = Timestamp};
@@ -252,7 +253,9 @@ decode_signed_subpacket(<<?KEY_EXPIRATION_SUBPACKET, Timestamp:32/integer-big>>,
 	C#decoder_ctx{key_expiration = Timestamp};
 decode_signed_subpacket(<<?ISSUER_SUBPACKET, Issuer:8/binary>>, C) -> C#decoder_ctx{issuer = Issuer};
 decode_signed_subpacket(<<?POLICY_URI_SUBPACKET, URI/binary>>, C) -> C#decoder_ctx{policy_uri = URI};
-decode_signed_subpacket(<<_Tag, _/binary>>, C) -> C.
+decode_signed_subpacket(<<Tag, Rest/binary>>, C) when Tag band 128 =:= 128 ->
+	decode_signed_subpacket(<<(Tag band 127), Rest/binary>>, C#decoder_ctx{critical_subpacket = true});
+decode_signed_subpacket(<<_Tag, _/binary>>, C = #decoder_ctx{critical_subpacket = false}) -> C.
 
 pgp_to_crypto_hash_algo(?HASH_ALGO_MD5) -> md5;
 pgp_to_crypto_hash_algo(?HASH_ALGO_SHA1) -> sha;
