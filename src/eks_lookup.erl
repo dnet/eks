@@ -29,12 +29,23 @@ to_html(ReqData, Ctx) ->
 				_:_ -> []
 			end,
 			KeysByText = pgp_keystore:search_keys(list_to_binary(SearchTerm)),
-			Results = lists:map(fun format_key/1, KeysByID ++ KeysByText), %% TODO efficiency, SMP
+			Results = [format_key(Key, false) || Key <- KeysByID ++ KeysByText], %% TODO efficiency, SMP
 			{ok, HTML} = index_dtl:render([{title, Title}, {results, Results}]),
+			{HTML, ReqData, Ctx};
+		"vindex" ->
+			Title = ["Search results for '", string:to_lower(SearchTerm), "'"],
+			KeysByID = try pgp_keystore:find_keys(parse_keyid(SearchTerm), [parents]) of
+				K -> K
+			catch
+				_:_ -> []
+			end,
+			KeysByText = pgp_keystore:search_keys(list_to_binary(SearchTerm)),
+			Results = [format_key(Key, true) || Key <- KeysByID ++ KeysByText], %% TODO efficiency, SMP
+			{ok, HTML} = vindex_dtl:render([{title, Title}, {results, Results}]),
 			{HTML, ReqData, Ctx}
 	end.
 
-format_key(Key) ->
+format_key(Key, IncludeSignatures) ->
 	{Timestamp, ParsedKey} = pgp_parse:decode_public_key(Key),
 	KeyID = pgp_parse:key_id(pgp_parse:c14n_pubkey(Key)),
 	{ID32, ID64} = pgp_keystore:short_ids(KeyID),
@@ -43,8 +54,27 @@ format_key(Key) ->
 		{dss, [P | _]} -> [bit_size(P), $D]
 	end,
 	KeyInfo = io_lib:format("~B~c", KeyParams),
-	UIDs = [UID || {UID, _} <- pgp_keystore:get_signatures(KeyID)],
+	SignatureMapper = case IncludeSignatures of
+		true -> fun ({UID, Sigs}) -> {UID, [format_sig(S, ID64, Timestamp) || S <- Sigs]} end;
+		false -> fun ({UID, _}) -> UID end
+	end,
+	UIDs = lists:map(SignatureMapper, pgp_keystore:get_signatures(KeyID)),
 	{upperhex(ID32), upperhex(ID64), unix_to_iso_date(Timestamp), KeyInfo, UIDs}.
+
+format_sig(Signature, Parent, KeyCre) ->
+	[SigExp, SigCre, PolicyURI, Issuer, KeyExp, SigLevel | _] = pgp_parse:decode_signature_packet(Signature),
+	<<_:4/binary, ID32:4/binary>> = Issuer,
+	IssuerName = case Issuer of
+		Parent -> <<"[selfsig]">>;
+		_ ->
+			case pgp_keystore:get_signatures(Issuer) of
+				[{UID, _} | _] -> UID;
+				_ -> undefined
+			end
+	end,
+	{upperhex(ID32), upperhex(Issuer), unix_to_iso_date(SigExp, SigCre),
+		unix_to_iso_date(SigCre), unix_to_iso_date(KeyExp, KeyCre),
+		SigLevel, PolicyURI, IssuerName}.
 
 unix_to_iso_date(Timestamp) -> unix_to_iso_date(Timestamp, 0).
 unix_to_iso_date(Timestamp, Base) when is_integer(Timestamp), is_integer(Base) ->

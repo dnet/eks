@@ -1,5 +1,6 @@
 -module(pgp_parse).
--export([decode_stream/2, decode_stream/1, key_id/1, encode_key/1, decode_public_key/1, c14n_pubkey/1]).
+-export([decode_stream/2, decode_stream/1, decode_public_key/1, decode_signature_packet/1]).
+-export([key_id/1, encode_key/1, c14n_pubkey/1]).
 -include("OpenSSL.hrl").
 
 -define(OLD_PACKET_FORMAT, 2).
@@ -53,6 +54,14 @@ decode_stream(Data, Opts) ->
 	Handler = proplists:get_value(handler, Opts, fun (_, _, D) -> D end),
 	HS = proplists:get_value(handler_state, Opts),
 	decode_packets(Decoded, #decoder_ctx{handler = Handler, handler_state = HS}).
+
+decode_signature_packet(Packet) ->
+	DecodeResult = decode_packet(?SIGNATURE_PACKET, Packet, #decoder_ctx{
+		handler = (fun dsp_handler/3), handler_state = [], skip_sig_check = true}),
+	DecodeResult#decoder_ctx.handler_state.
+
+dsp_handler(signature, [_ | Params], []) -> Params;
+dsp_handler(_, _, State) -> State.
 
 encode_key(KeyData) -> encode_key(KeyData, ?PUBKEY_PACKET).
 encode_key(KeyData, KeyTag) ->
