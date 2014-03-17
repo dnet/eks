@@ -114,8 +114,9 @@ decode_packet(?SIGNATURE_PACKET, <<?PGP_VERSION_4, SigType, PubKeyAlgo, HashAlgo
 	ContextAfterUnhashed = decode_signed_subpackets(UnhashedData, ContextAfterHashed),
 	verify_signature_packet(PubKeyAlgo, HashAlgo, Expected, Signature, SigType, ContextAfterUnhashed),
 	Handler = ContextAfterUnhashed#decoder_ctx.handler,
+	SigLevel = sig_type_to_sig_level(SigType),
 	HS = Handler(signature, [SigData, ?SIGNED_PARAM(sig_expiration), ?SIGNED_PARAM(sig_created),
-		?SIGNED_PARAM(policy_uri), ?UNSIGNED_PARAM(issuer), ?SIGNED_PARAM(key_expiration)],
+		?SIGNED_PARAM(policy_uri), ?UNSIGNED_PARAM(issuer), ?SIGNED_PARAM(key_expiration), SigLevel],
 		ContextAfterUnhashed#decoder_ctx.handler_state),
 	ContextAfterUnhashed#decoder_ctx{handler_state = HS};
 decode_packet(?SIGNATURE_PACKET, <<?PGP_VERSION_3, 5, SigType, Timestamp:32/integer-big,
@@ -145,6 +146,9 @@ decode_packet(?UID_PACKET, UID, C) ->
 	HS = (C#decoder_ctx.handler)(uid, [UID], C#decoder_ctx.handler_state),
 	C#decoder_ctx{uid = <<16#B4, (byte_size(UID)):32/integer-big, UID/binary>>,
 		handler_state=HS, user_attr = undefined}.
+
+sig_type_to_sig_level(Cert) when Cert >= 16#11, Cert =< 16#13 -> [Cert - 16#10 + $0];
+sig_type_to_sig_level(_) -> " ".
 
 c14n_pubkey(KeyData) -> <<16#99, (byte_size(KeyData)):16/integer-big, KeyData/binary>>.
 
