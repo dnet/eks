@@ -55,14 +55,18 @@ format_key(Key, IncludeSignatures) ->
 	end,
 	KeyInfo = io_lib:format("~B~c", KeyParams),
 	SignatureMapper = case IncludeSignatures of
-		true -> fun ({UID, Sigs}) -> {UID, [format_sig(S, ID64, Timestamp) || S <- Sigs]} end;
+		true -> fun ({UID, Sigs}) -> {UID, [format_sig(S, ID64, Timestamp) || S <- prepare_sigs(Sigs)]} end;
 		false -> fun ({UID, _}) -> UID end
 	end,
 	UIDs = lists:map(SignatureMapper, pgp_keystore:get_signatures(KeyID)),
 	{upperhex(ID32), upperhex(ID64), unix_to_iso_date(Timestamp), KeyInfo, UIDs}.
 
-format_sig(Signature, Parent, KeyCre) ->
-	[SigExp, SigCre, PolicyURI, Issuer, KeyExp, SigLevel | _] = pgp_parse:decode_signature_packet(Signature),
+prepare_sigs(Signatures) ->
+	Fetched = [begin [SE, SC, PU, I, KE, SL | _] = pgp_parse:decode_signature_packet(Signature),
+		{SE, SC, PU, I, KE, SL} end || Signature <- Signatures],
+	lists:keysort(2, Fetched).
+
+format_sig({SigExp, SigCre, PolicyURI, Issuer, KeyExp, SigLevel}, Parent, KeyCre) ->
 	<<_:4/binary, ID32:4/binary>> = Issuer,
 	IssuerName = case Issuer of
 		Parent -> <<"[selfsig]">>;
