@@ -7,6 +7,7 @@
 -define(PGP_PUBKEY_HEADER, <<"-----BEGIN PGP PUBLIC KEY BLOCK-----">>).
 -define(PGP_PUBKEY_FOOTER, <<"-----END PGP PUBLIC KEY BLOCK-----">>).
 -define(PGP_VERSION_PREFIX, "Version: ").
+-define(PGP_COMMENT_PREFIX, "Comment: ").
 
 -define(LINE_LENGTH, 72).
 -define(EKS_BANNER, "EKS pre-release").
@@ -24,6 +25,7 @@ keylines([]) -> missing_header.
 keylines([], Acc, CRC) -> {Acc, CRC};
 keylines([<<>> | Rest], Acc, CRC) -> keylines(Rest, Acc, CRC);
 keylines([<<?PGP_VERSION_PREFIX, _/binary>> | Rest], Acc, CRC) -> keylines(Rest, Acc, CRC);
+keylines([<<?PGP_COMMENT_PREFIX, _/binary>> | Rest], Acc, CRC) -> keylines(Rest, Acc, CRC);
 keylines([<<$=, CRC/binary>> | Rest], Acc, _) -> keylines(Rest, Acc, CRC);
 keylines([?PGP_PUBKEY_FOOTER | _], Acc, CRC) -> {Acc, CRC};
 keylines([Line | Rest], Acc, CRC) -> keylines(Rest, <<Acc/binary, Line/binary>>, CRC).
