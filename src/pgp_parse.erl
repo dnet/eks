@@ -122,7 +122,8 @@ hash_signature_packet(SigType, PubKeyAlgo, HashAlgo, HashedData, Context) ->
 		%% 0x11: Persona certification of a User ID and Public-Key packet.
 		%% 0x12: Casual certification of a User ID and Public-Key packet.
 		%% 0x13: Positive certification of a User ID and Public-Key packet.
-		Cert when Cert >= 16#10, Cert =< 16#13 ->
+		%% 0x30: Certification revocation signature
+		Cert when Cert >= 16#10, Cert =< 16#13; Cert =:= 16#30 ->
 			{PK, _} = Context#decoder_ctx.primary_key,
 			UID = Context#decoder_ctx.uid,
 			crypto:hash_update(crypto:hash_update(HashCtx, PK), UID);
