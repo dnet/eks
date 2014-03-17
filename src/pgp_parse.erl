@@ -9,6 +9,8 @@
 -define(PUBKEY_PACKET, 6).
 -define(UID_PACKET, 13).
 -define(SUBKEY_PACKET, 14).
+-define(USER_ATTR_PACKET, 17).
+
 -define(ISSUER_SUBPACKET, 16).
 -define(PGP_VERSION, 4).
 
@@ -26,7 +28,8 @@
 -define(HASH_ALGO_SHA512, 10).
 -define(HASH_ALGO_SHA224, 11).
 
--record(decoder_ctx, {primary_key, subkey, uid, issuer, handler, handler_state}).
+-record(decoder_ctx, {primary_key, subkey, uid, user_attr, issuer, handler, handler_state,
+	sig_created, sig_expiration, key_expiration, policy_uri, skip_sig_check=false}).
 
 decode_stream(Data) -> decode_stream(Data, []).
 decode_stream(Data, Opts) ->
@@ -114,9 +117,12 @@ decode_packet(Tag, KeyData, Context) when Tag =:= ?PUBKEY_PACKET; Tag =:= ?SUBKE
 			HS = Handler(subkey, [SK, KeyData, Timestamp, Context#decoder_ctx.primary_key], PHS),
 			Context#decoder_ctx{subkey = SK, handler_state = HS, uid = undefined}
 	end;
+decode_packet(?USER_ATTR_PACKET, UserAttr, C) ->
+	C#decoder_ctx{user_attr = <<16#D1, (byte_size(UserAttr)):32/integer-big,  UserAttr/binary>>};
 decode_packet(?UID_PACKET, UID, C) ->
 	HS = (C#decoder_ctx.handler)(uid, [UID], C#decoder_ctx.handler_state),
-	C#decoder_ctx{uid = <<16#B4, (byte_size(UID)):32/integer-big, UID/binary>>, handler_state=HS}.
+	C#decoder_ctx{uid = <<16#B4, (byte_size(UID)):32/integer-big, UID/binary>>,
+		handler_state=HS, user_attr = undefined}.
 
 c14n_pubkey(KeyData) -> <<16#99, (byte_size(KeyData)):16/integer-big, KeyData/binary>>.
 
@@ -140,7 +146,10 @@ hash_signature_packet(SigType, PubKeyAlgo, HashAlgo, HashedData, Context) ->
 		%% 0x30: Certification revocation signature
 		Cert when Cert >= 16#10, Cert =< 16#13; Cert =:= 16#30 ->
 			{PK, _} = Context#decoder_ctx.primary_key,
-			UID = Context#decoder_ctx.uid,
+			UID = case Context#decoder_ctx.user_attr of
+				undefined -> Context#decoder_ctx.uid;
+				UA -> UA
+			end,
 			crypto:hash_update(crypto:hash_update(HashCtx, PK), UID);
 		_ -> io:format("Unknown SigType ~p\n", [SigType]), HashCtx %% XXX
 	end,
