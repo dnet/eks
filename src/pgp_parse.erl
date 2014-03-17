@@ -20,6 +20,9 @@
 -define(PGP_VERSION_4, 4).
 -define(PGP_VERSION_3, 3).
 
+-define(SIGNED_PARAM(X), ContextAfterHashed#decoder_ctx.X).
+-define(UNSIGNED_PARAM(X), ContextAfterUnhashed#decoder_ctx.X).
+
 -define(PK_ALGO_RSA_ES, 1).
 -define(PK_ALGO_RSA_E, 2).
 -define(PK_ALGO_RSA_S, 3).
@@ -111,7 +114,9 @@ decode_packet(?SIGNATURE_PACKET, <<?PGP_VERSION_4, SigType, PubKeyAlgo, HashAlgo
 	ContextAfterUnhashed = decode_signed_subpackets(UnhashedData, ContextAfterHashed),
 	verify_signature_packet(PubKeyAlgo, HashAlgo, Expected, Signature, SigType, ContextAfterUnhashed),
 	Handler = ContextAfterUnhashed#decoder_ctx.handler,
-	HS = Handler(signature, [SigData], ContextAfterUnhashed#decoder_ctx.handler_state),
+	HS = Handler(signature, [SigData, ?SIGNED_PARAM(sig_expiration), ?SIGNED_PARAM(sig_created),
+		?SIGNED_PARAM(policy_uri), ?UNSIGNED_PARAM(issuer)],
+		ContextAfterUnhashed#decoder_ctx.handler_state), %% TODO key_expiration
 	ContextAfterUnhashed#decoder_ctx{handler_state = HS};
 decode_packet(Tag, KeyData, Context) when Tag =:= ?PUBKEY_PACKET; Tag =:= ?SUBKEY_PACKET ->
 	{Timestamp, Key} = decode_public_key(KeyData),
