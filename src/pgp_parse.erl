@@ -247,7 +247,6 @@ decode_signed_subpackets(Packets, C) ->
 decode_signed_subpacket(<<?SIG_CREATED_SUBPACKET, Timestamp:32/integer-big>>, C) ->
 	C#decoder_ctx{sig_created = Timestamp};
 decode_signed_subpacket(<<?SIG_EXPIRATION_SUBPACKET, Timestamp:32/integer-big>>, C) ->
-	%io:format("SE: ~p\n", [Timestamp]),
 	C#decoder_ctx{sig_expiration = Timestamp};
 decode_signed_subpacket(<<?KEY_EXPIRATION_SUBPACKET, Timestamp:32/integer-big>>, C) ->
 	C#decoder_ctx{key_expiration = Timestamp};
