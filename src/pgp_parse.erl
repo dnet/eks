@@ -239,15 +239,8 @@ read_mpi(<<Length:16/integer-big, Rest/binary>>, Count, Acc) ->
 key_id(Subject) -> crypto:hash(sha, Subject).
 
 decode_signed_subpackets(<<>>, Context) -> Context;
-decode_signed_subpackets(<<Length, Payload:Length/binary, Rest/binary>>, C) when Length < 192 ->
-	NC = decode_signed_subpacket(Payload, C),
-	decode_signed_subpackets(Rest, NC);
-decode_signed_subpackets(<<LengthHigh, LengthLow, PayloadRest/binary>>, C) when LengthHigh < 255 ->
-	Length = ((LengthHigh - 192) bsl 8) bor LengthLow + 192,
-	<<Payload:Length/binary, Rest/binary>> = PayloadRest,
-	NC = decode_signed_subpacket(Payload, C),
-	decode_signed_subpackets(Rest, NC);
-decode_signed_subpackets(<<255, Length:32/integer-big, Payload:Length/binary, Rest/binary>>, C) ->
+decode_signed_subpackets(Packets, C) ->
+	{Payload, Rest} = decode_new_packet(Packets),
 	NC = decode_signed_subpacket(Payload, C),
 	decode_signed_subpackets(Rest, NC).
 
