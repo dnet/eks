@@ -16,7 +16,9 @@
 -define(KEY_EXPIRATION_SUBPACKET, 9).
 -define(ISSUER_SUBPACKET, 16).
 -define(POLICY_URI_SUBPACKET, 26).
--define(PGP_VERSION, 4).
+
+-define(PGP_VERSION_4, 4).
+-define(PGP_VERSION_3, 3).
 
 -define(PK_ALGO_RSA_ES, 1).
 -define(PK_ALGO_RSA_E, 2).
@@ -96,7 +98,7 @@ decode_new_packet(<<LengthHigh, LengthLow, PayloadRest/binary>>) when LengthHigh
 decode_new_packet(<<255, Length:32/integer-big, Payload:Length/binary, Rest/binary>>) ->
 	{Payload, Rest}.
 
-decode_packet(?SIGNATURE_PACKET, <<?PGP_VERSION, SigType, PubKeyAlgo, HashAlgo,
+decode_packet(?SIGNATURE_PACKET, <<?PGP_VERSION_4, SigType, PubKeyAlgo, HashAlgo,
 								   HashedLen:16/integer-big, HashedData:HashedLen/binary,
 								   UnhashedLen:16/integer-big, UnhashedData:UnhashedLen/binary,
 								   HashLeft16:2/binary, Signature/binary>> = SigData, Context) ->
@@ -133,7 +135,7 @@ decode_packet(?UID_PACKET, UID, C) ->
 
 c14n_pubkey(KeyData) -> <<16#99, (byte_size(KeyData)):16/integer-big, KeyData/binary>>.
 
-decode_public_key(<<?PGP_VERSION, Timestamp:32/integer-big, Algorithm, KeyRest/binary>>) ->
+decode_public_key(<<?PGP_VERSION_4, Timestamp:32/integer-big, Algorithm, KeyRest/binary>>) ->
 	Key = decode_pubkey_algo(Algorithm, KeyRest),
 	{Timestamp, Key}.
 
@@ -160,9 +162,9 @@ hash_signature_packet(SigType, PubKeyAlgo, HashAlgo, HashedData, Context) ->
 			crypto:hash_update(crypto:hash_update(HashCtx, PK), UID);
 		_ -> io:format("Unknown SigType ~p\n", [SigType]), HashCtx %% XXX
 	end,
-	FinalData = <<?PGP_VERSION, SigType, PubKeyAlgo, HashAlgo,
+	FinalData = <<?PGP_VERSION_4, SigType, PubKeyAlgo, HashAlgo,
 				  (byte_size(HashedData)):16/integer-big, HashedData/binary>>,
-	Trailer = <<?PGP_VERSION, 16#FF, (byte_size(FinalData)):32/integer-big>>,
+	Trailer = <<?PGP_VERSION_4, 16#FF, (byte_size(FinalData)):32/integer-big>>,
 	crypto:hash_final(crypto:hash_update(crypto:hash_update(FinalCtx, FinalData), Trailer)).
 
 verify_signature_packet(_, _, _, _, _, #decoder_ctx{skip_sig_check = true}) -> ok;
