@@ -3,10 +3,13 @@
 
 -include_lib("webmachine/include/webmachine.hrl").
 
+-define(?MACHINE_READABLE, "mr").
+
 init([]) -> {ok, undefined}.
 
 to_html(ReqData, Ctx) ->
 	SearchTerm = wrq:get_qs_value("search", ReqData),
+	Options = wrq:get_qs_value("options", ReqData),
 	case wrq:get_qs_value("op", ReqData) of
 		"get" ->
 			case pgp_keystore:find_keys(parse_keyid(SearchTerm), [parents]) of
@@ -17,9 +20,17 @@ to_html(ReqData, Ctx) ->
 					{{halt, 404}, RD404, Ctx};
 				Keys ->
 					Payload = pgp_armor:encode(<< <<(pgp_parse:encode_key(K))/binary>> || K <- Keys >>),
-					Title = ["Public Key Server -- Get ``", string:to_lower(SearchTerm), " ''"],
-					{ok, HTML} = results_dtl:render([{payload, Payload}, {title, Title}]),
-					{HTML, ReqData, Ctx}
+					case Options of
+						?MACHINE_READABLE ->
+							Headers = [{"X-HKP-Results-Count", integer_to_list(length(Keys))},
+									   {"Content-Type", "application/pgp-keys; charset=UTF-8"},
+									   {"Content-disposition", "attachment; filename=gpgkey.asc"}],
+							{Payload, wrq:set_resp_headers(Headers, ReqData), Ctx};
+						_ ->
+							Title = ["Public Key Server -- Get ``", string:to_lower(SearchTerm), " ''"],
+							{ok, HTML} = results_dtl:render([{payload, Payload}, {title, Title}]),
+							{HTML, ReqData, Ctx}
+					end
 			end;
 		"index" ->
 			Title = ["Search results for '", string:to_lower(SearchTerm), "'"],
