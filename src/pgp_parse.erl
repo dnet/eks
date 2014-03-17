@@ -118,6 +118,14 @@ decode_packet(?SIGNATURE_PACKET, <<?PGP_VERSION_4, SigType, PubKeyAlgo, HashAlgo
 		?SIGNED_PARAM(policy_uri), ?UNSIGNED_PARAM(issuer), ?SIGNED_PARAM(key_expiration)],
 		ContextAfterUnhashed#decoder_ctx.handler_state),
 	ContextAfterUnhashed#decoder_ctx{handler_state = HS};
+decode_packet(?SIGNATURE_PACKET, <<?PGP_VERSION_3, 5, SigType, Timestamp:32/integer-big,
+								   Issuer:8/binary, PubKeyAlgo, HashAlgo,
+								   HashLeft16:2/binary, Signature/binary>> = SigData, Context) ->
+	%% TODO verify
+	Handler = Context#decoder_ctx.handler,
+	HS = Handler(signature, [SigData, undefined, Timestamp, undefined, Issuer],
+		Context#decoder_ctx.handler_state),
+	Context#decoder_ctx{handler_state = HS};
 decode_packet(Tag, KeyData, Context) when Tag =:= ?PUBKEY_PACKET; Tag =:= ?SUBKEY_PACKET ->
 	{Timestamp, Key} = decode_public_key(KeyData),
 	Handler = Context#decoder_ctx.handler,
