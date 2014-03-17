@@ -76,9 +76,15 @@ format_sig({SigExp, SigCre, PolicyURI, Issuer, KeyExp, SigLevel}, Parent, KeyCre
 				_ -> undefined
 			end
 	end,
+	SigExpired = case {SigExp, SigCre} of
+		{E, C} when is_integer(E), is_integer(C) ->
+			{MS, S, _} = os:timestamp(),
+			MS * 1000000 + S >= E + C;
+		_ -> false
+	end,
 	{upperhex(ID32), upperhex(Issuer), unix_to_iso_date(SigExp, SigCre),
 		unix_to_iso_date(SigCre), unix_to_iso_date(KeyExp, KeyCre),
-		SigLevel, PolicyURI, IssuerName}.
+		SigLevel, SigExpired, PolicyURI, IssuerName}.
 
 unix_to_iso_date(Timestamp) -> unix_to_iso_date(Timestamp, 0).
 unix_to_iso_date(Timestamp, Base) when is_integer(Timestamp), is_integer(Base) ->

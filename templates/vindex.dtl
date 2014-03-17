@@ -5,8 +5,8 @@
 {% for id32, id64, timestamp, keyinfo, uids in results %}<hr /><pre>
 <strong>pub</strong>  {{ keyinfo }}/<a href="/pks/lookup?op=get&amp;search=0x{{ id64 }}">{{ id32 }}</a> {{ timestamp }}
 {% for uid, signatures in uids %}
-<strong>uid</strong> <span class="uid">{{ uid }}</span>{% for sid32, sid64, exp, cre, kexp, level, policy, issuer_name in signatures %}
-sig  sig{{ level }}  <a href="/pks/lookup?op=get&amp;search=0x{{ sid64 }}">{{ sid32 }}</a> {{ cre }} {{ exp }} {{ kexp }} <a href="/pks/lookup?op=vindex&amp;search=0x{{ sid64 }}">{{ issuer_name }}</a>{% if policy %}
+<strong>uid</strong> <span class="uid">{{ uid }}</span>{% for sid32, sid64, exp, cre, kexp, level, expired, policy, issuer_name in signatures %}
+sig {% if expired %}<span class="warn"> exp  </span>{% else %} sig{{ level }} {% endif %} <a href="/pks/lookup?op=get&amp;search=0x{{ sid64 }}">{{ sid32 }}</a> {{ cre }} {{ exp }} {{ kexp }} <a href="/pks/lookup?op=vindex&amp;search=0x{{ sid64 }}">{{ issuer_name }}</a>{% if policy %}
     Policy URL: <a href="{{ policy }}">{{ policy }}</a>{% endif %}{% endfor %}
 {% endfor %}
 </pre>{% endfor %}
