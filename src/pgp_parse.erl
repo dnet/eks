@@ -11,7 +11,11 @@
 -define(SUBKEY_PACKET, 14).
 -define(USER_ATTR_PACKET, 17).
 
+-define(SIG_CREATED_SUBPACKET, 2).
+-define(SIG_EXPIRATION_SUBPACKET, 3).
+-define(KEY_EXPIRATION_SUBPACKET, 9).
 -define(ISSUER_SUBPACKET, 16).
+-define(POLICY_URI_SUBPACKET, 26).
 -define(PGP_VERSION, 4).
 
 -define(PK_ALGO_RSA_ES, 1).
@@ -215,7 +219,15 @@ decode_signed_subpackets(<<255, Length:32/integer-big, Payload:Length/binary, Re
 	NC = decode_signed_subpacket(Payload, C),
 	decode_signed_subpackets(Rest, NC).
 
+decode_signed_subpacket(<<?SIG_CREATED_SUBPACKET, Timestamp:32/integer-big>>, C) ->
+	C#decoder_ctx{sig_created = Timestamp};
+decode_signed_subpacket(<<?SIG_EXPIRATION_SUBPACKET, Timestamp:32/integer-big>>, C) ->
+	%io:format("SE: ~p\n", [Timestamp]),
+	C#decoder_ctx{sig_expiration = Timestamp};
+decode_signed_subpacket(<<?KEY_EXPIRATION_SUBPACKET, Timestamp:32/integer-big>>, C) ->
+	C#decoder_ctx{key_expiration = Timestamp};
 decode_signed_subpacket(<<?ISSUER_SUBPACKET, Issuer:8/binary>>, C) -> C#decoder_ctx{issuer = Issuer};
+decode_signed_subpacket(<<?POLICY_URI_SUBPACKET, URI/binary>>, C) -> C#decoder_ctx{policy_uri = URI};
 decode_signed_subpacket(<<_Tag, _/binary>>, C) -> C.
 
 pgp_to_crypto_hash_algo(?HASH_ALGO_MD5) -> md5;
