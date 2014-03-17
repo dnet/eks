@@ -43,10 +43,14 @@ format_key(Key) ->
 		{dss, [P | _]} -> [bit_size(P), $D]
 	end,
 	KeyInfo = io_lib:format("~B~c", KeyParams),
-	{{Y, M, D}, _} = calendar:now_to_datetime({0, Timestamp, 0}),
-	TS = io_lib:format("~4.10.0B-~2.10.0B-~2.10.0B", [Y, M, D]),
 	UIDs = [UID || {UID, _} <- pgp_keystore:get_signatures(KeyID)],
-	{upperhex(ID32), upperhex(ID64), TS, KeyInfo, UIDs}.
+	{upperhex(ID32), upperhex(ID64), unix_to_iso_date(Timestamp), KeyInfo, UIDs}.
+
+unix_to_iso_date(Timestamp) -> unix_to_iso_date(Timestamp, 0).
+unix_to_iso_date(Timestamp, Base) when is_integer(Timestamp), is_integer(Base) ->
+	{{Y, M, D}, _} = calendar:now_to_datetime({0, Timestamp + Base, 0}),
+	io_lib:format("~4.10.0B-~2.10.0B-~2.10.0B", [Y, M, D]);
+unix_to_iso_date(_, _) -> "__________".
 
 upperhex(Value) -> string:to_upper(mochihex:to_hex(Value)).
 
