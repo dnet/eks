@@ -51,10 +51,38 @@ to_html(ReqData, Ctx) ->
 				_:_ -> []
 			end,
 			KeysByText = pgp_keystore:search_keys(list_to_binary(SearchTerm)),
-			Results = [format_key(Key, true) || Key <- KeysByID ++ KeysByText], %% TODO efficiency, SMP
-			{ok, HTML} = vindex_dtl:render([{title, Title}, {results, Results}]),
-			{HTML, ReqData, Ctx}
+			case Options of
+				?MACHINE_READABLE ->
+					Results = [format_mr_key(Key) || Key <- KeysByID ++ KeysByText], %% TODO efficiency, SMP
+					ResLength = length(Results),
+					Headers = [{"X-HKP-Results-Count", integer_to_list(ResLength)},
+							   {"Content-Type", "text/plain"}],
+					TXT = ["info:1:", integer_to_list(ResLength), $\n, Results],
+					{TXT, wrq:set_resp_headers(Headers, ReqData), Ctx};
+				_ ->
+					Results = [format_key(Key, true) || Key <- KeysByID ++ KeysByText], %% TODO efficiency, SMP
+					{ok, HTML} = vindex_dtl:render([{title, Title}, {results, Results}]),
+					{HTML, ReqData, Ctx}
+			end
 	end.
+
+format_mr_key(Key) ->
+	{HexID32, _, UnixTS, KeyType, KeyLength, UIDs} = parse_key(Key, fun format_mr_sig/3),
+	AlgoID = case KeyType of rsa -> 1; dss -> 17 end, %% TODO use pgp_parse
+	ExpDate = "",
+	Flags = "",
+	["pub:", HexID32, $:, integer_to_list(AlgoID), $:, integer_to_list(KeyLength), $:,
+		integer_to_list(UnixTS), $:, ExpDate, $:, Flags, $\n, lists:map(fun format_mr_uid/1, UIDs)].
+
+format_mr_sig({_SigExp, SigCre, _, Selfsig, _KeyExp, _}, Selfsig, _KeyCre) -> SigCre;
+format_mr_sig(_, _, _) -> ok.
+
+format_mr_uid({UID, Sigs}) ->
+	["uid:", ibrowse_lib:url_encode(binary_to_list(UID)), $:, get_selfsig_ts(Sigs), "::\n"]. %% TODO 2 fields
+
+get_selfsig_ts([]) -> "";
+get_selfsig_ts([ok | Sigs]) -> get_selfsig_ts(Sigs);
+get_selfsig_ts([SigCre | _]) -> integer_to_list(SigCre).
 
 format_key(Key, IncludeSignatures) ->
 	SF = case IncludeSignatures of true -> fun format_sig/3; false -> undefined end,
