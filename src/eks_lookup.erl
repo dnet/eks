@@ -3,7 +3,7 @@
 
 -include_lib("webmachine/include/webmachine.hrl").
 
--define(?MACHINE_READABLE, "mr").
+-define(MACHINE_READABLE, "mr").
 
 init([]) -> {ok, undefined}.
 
