@@ -57,20 +57,25 @@ to_html(ReqData, Ctx) ->
 	end.
 
 format_key(Key, IncludeSignatures) ->
+	SF = case IncludeSignatures of true -> fun format_sig/3; false -> undefined end,
+	{HexID32, HexID64, UnixTS, KeyType, KeyLength, UIDs} = parse_key(Key, SF),
+	KeyInfo = io_lib:format("~B~c", [KeyLength, hd(string:to_upper(atom_to_list(KeyType)))]),
+	{HexID32, HexID64, unix_to_iso_date(UnixTS), KeyInfo, UIDs}.
+
+parse_key(Key, SignatureFormatter) ->
 	{Timestamp, ParsedKey} = pgp_parse:decode_public_key(Key),
 	KeyID = pgp_parse:key_id(pgp_parse:c14n_pubkey(Key)),
 	{ID32, ID64} = pgp_keystore:short_ids(KeyID),
-	KeyParams = case ParsedKey of
-		{rsa, [_, N]} -> [bit_size(N), $R];
-		{dss, [P | _]} -> [bit_size(P), $D]
+	KeyLength = case ParsedKey of
+		{rsa, [_, N]} -> bit_size(N);
+		{dss, [P | _]} -> bit_size(P)
 	end,
-	KeyInfo = io_lib:format("~B~c", KeyParams),
-	SignatureMapper = case IncludeSignatures of
-		true -> fun ({UID, Sigs}) -> {UID, [format_sig(S, ID64, Timestamp) || S <- prepare_sigs(Sigs)]} end;
+	SignatureMapper = case is_function(SignatureFormatter) of
+		true -> fun ({UID, Sigs}) -> {UID, [SignatureFormatter(S, ID64, Timestamp) || S <- prepare_sigs(Sigs)]} end;
 		false -> fun ({UID, _}) -> UID end
 	end,
 	UIDs = lists:map(SignatureMapper, pgp_keystore:get_signatures(KeyID)),
-	{upperhex(ID32), upperhex(ID64), unix_to_iso_date(Timestamp), KeyInfo, UIDs}.
+	{upperhex(ID32), upperhex(ID64), Timestamp, element(1, ParsedKey), KeyLength, UIDs}.
 
 prepare_sigs(Signatures) ->
 	Fetched = [begin [SE, SC, PU, I, KE, SL | _] = pgp_parse:decode_signature_packet(Signature),
