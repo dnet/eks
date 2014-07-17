@@ -19,7 +19,13 @@ ensure_started(App) ->
 %% @doc Starts the app for inclusion in a supervisor tree
 start_link() ->
     ensure_started(inets),
+    ensure_started(asn1),
     ensure_started(crypto),
+    ensure_started(public_key),
+    ensure_started(ssl),
+    ensure_started(xmerl),
+    ensure_started(compiler),
+    ensure_started(syntax_tools),
     ensure_started(mochiweb),
     mnesia:create_schema([node()]),
     ensure_started(mnesia),
@@ -33,7 +39,13 @@ start_link() ->
 %% @doc Start the eks server.
 start() ->
     ensure_started(inets),
+    ensure_started(asn1),
     ensure_started(crypto),
+    ensure_started(public_key),
+    ensure_started(ssl),
+    ensure_started(xmerl),
+    ensure_started(compiler),
+    ensure_started(syntax_tools),
     ensure_started(mochiweb),
     mnesia:create_schema([node()]),
     ensure_started(mnesia),
