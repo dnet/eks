@@ -81,23 +81,23 @@ encode_packet(_, undefined) -> <<>>;
 encode_packet(Tag, Body) ->
 	{LenBits, Length} = case byte_size(Body) of
 		S when S < 16#100       -> {0, <<S>>};
-		M when M < 16#10000     -> {1, <<M:16/integer-big>>};
-		L when L < 16#100000000 -> {2, <<L:32/integer-big>>}
+		M when M < 16#10000     -> {1, <<M:16>>};
+		L when L < 16#100000000 -> {2, <<L:32>>}
 	end,
-	<<?OLD_PACKET_FORMAT:2/integer-big, Tag:4/integer-big,
-	  LenBits:2/integer-big, Length/binary, Body/binary>>.
+	<<?OLD_PACKET_FORMAT:2, Tag:4,
+	  LenBits:2, Length/binary, Body/binary>>.
 
 decode_packets(<<>>, _) -> ok;
-decode_packets(<<?NEW_PACKET_FORMAT:2/integer-big, Tag:6/integer-big, Rest/binary>>, Context) ->
+decode_packets(<<?NEW_PACKET_FORMAT:2, Tag:6, Rest/binary>>, Context) ->
 	{PacketData, S2Rest} = decode_new_packet(Rest),
 	NewContext = decode_packet(Tag, PacketData, Context),
 	decode_packets(S2Rest, NewContext);
-decode_packets(<<?OLD_PACKET_FORMAT:2/integer-big, Tag:4/integer-big,
-				LenBits:2/integer-big, Body/binary>>, Context) ->
+decode_packets(<<?OLD_PACKET_FORMAT:2, Tag:4,
+				LenBits:2, Body/binary>>, Context) ->
 	{PacketData, S2Rest} = case LenBits of
 		0 -> <<Length, Object:Length/binary, SRest/binary>> = Body, {Object, SRest};
-		1 -> <<Length:16/integer-big, Object:Length/binary, SRest/binary>> = Body, {Object, SRest};
-		2 -> <<Length:32/integer-big, Object:Length/binary, SRest/binary>> = Body, {Object, SRest}
+		1 -> <<Length:16, Object:Length/binary, SRest/binary>> = Body, {Object, SRest};
+		2 -> <<Length:32, Object:Length/binary, SRest/binary>> = Body, {Object, SRest}
 	end,
 	NewContext = decode_packet(Tag, PacketData, Context),
 	decode_packets(S2Rest, NewContext).
@@ -108,12 +108,12 @@ decode_new_packet(<<LengthHigh, LengthLow, PayloadRest/binary>>) when LengthHigh
 	Length = ((LengthHigh - 192) bsl 8) bor LengthLow + 192,
 	<<Payload:Length/binary, Rest/binary>> = PayloadRest,
 	{Payload, Rest};
-decode_new_packet(<<255, Length:32/integer-big, Payload:Length/binary, Rest/binary>>) ->
+decode_new_packet(<<255, Length:32, Payload:Length/binary, Rest/binary>>) ->
 	{Payload, Rest}.
 
 decode_packet(?SIGNATURE_PACKET, <<?PGP_VERSION_4, SigType, PubKeyAlgo, HashAlgo,
-								   HashedLen:16/integer-big, HashedData:HashedLen/binary,
-								   UnhashedLen:16/integer-big, UnhashedData:UnhashedLen/binary,
+								   HashedLen:16, HashedData:HashedLen/binary,
+								   UnhashedLen:16, UnhashedData:UnhashedLen/binary,
 								   HashLeft16:2/binary, Signature/binary>> = SigData, Context) ->
 	Expected = case Context#decoder_ctx.skip_sig_check of
 		true -> <<HashLeft16:2/binary>>;
@@ -129,7 +129,7 @@ decode_packet(?SIGNATURE_PACKET, <<?PGP_VERSION_4, SigType, PubKeyAlgo, HashAlgo
 		?SIGNED_PARAM(policy_uri), ?UNSIGNED_PARAM(issuer), ?SIGNED_PARAM(key_expiration), SigLevel],
 		ContextAfterUnhashed#decoder_ctx.handler_state),
 	ContextAfterUnhashed#decoder_ctx{handler_state = HS};
-decode_packet(?SIGNATURE_PACKET, <<?PGP_VERSION_3, 5, SigType, Timestamp:32/integer-big,
+decode_packet(?SIGNATURE_PACKET, <<?PGP_VERSION_3, 5, SigType, Timestamp:32,
 								   Issuer:8/binary, PubKeyAlgo, HashAlgo,
 								   HashLeft16:2/binary, Signature/binary>> = SigData, Context) ->
 	%% TODO verify
@@ -151,18 +151,18 @@ decode_packet(Tag, KeyData, Context) when Tag =:= ?PUBKEY_PACKET; Tag =:= ?SUBKE
 			Context#decoder_ctx{subkey = SK, handler_state = HS, uid = undefined}
 	end;
 decode_packet(?USER_ATTR_PACKET, UserAttr, C) ->
-	C#decoder_ctx{user_attr = <<16#D1, (byte_size(UserAttr)):32/integer-big,  UserAttr/binary>>};
+	C#decoder_ctx{user_attr = <<16#D1, (byte_size(UserAttr)):32,  UserAttr/binary>>};
 decode_packet(?UID_PACKET, UID, C) ->
 	HS = (C#decoder_ctx.handler)(uid, [UID], C#decoder_ctx.handler_state),
-	C#decoder_ctx{uid = <<16#B4, (byte_size(UID)):32/integer-big, UID/binary>>,
+	C#decoder_ctx{uid = <<16#B4, (byte_size(UID)):32, UID/binary>>,
 		handler_state=HS, user_attr = undefined}.
 
 sig_type_to_sig_level(Cert) when Cert >= 16#11, Cert =< 16#13 -> [Cert - 16#10 + $0];
 sig_type_to_sig_level(_) -> " ".
 
-c14n_pubkey(KeyData) -> <<16#99, (byte_size(KeyData)):16/integer-big, KeyData/binary>>.
+c14n_pubkey(KeyData) -> <<16#99, (byte_size(KeyData)):16, KeyData/binary>>.
 
-decode_public_key(<<?PGP_VERSION_4, Timestamp:32/integer-big, Algorithm, KeyRest/binary>>) ->
+decode_public_key(<<?PGP_VERSION_4, Timestamp:32, Algorithm, KeyRest/binary>>) ->
 	Key = decode_pubkey_algo(Algorithm, KeyRest),
 	{Timestamp, Key}.
 
@@ -190,8 +190,8 @@ hash_signature_packet(SigType, PubKeyAlgo, HashAlgo, HashedData, Context) ->
 		_ -> io:format("Unknown SigType ~p\n", [SigType]), HashCtx %% XXX
 	end,
 	FinalData = <<?PGP_VERSION_4, SigType, PubKeyAlgo, HashAlgo,
-				  (byte_size(HashedData)):16/integer-big, HashedData/binary>>,
-	Trailer = <<?PGP_VERSION_4, 16#FF, (byte_size(FinalData)):32/integer-big>>,
+				  (byte_size(HashedData)):16, HashedData/binary>>,
+	Trailer = <<?PGP_VERSION_4, 16#FF, (byte_size(FinalData)):32>>,
 	crypto:hash_final(crypto:hash_update(crypto:hash_update(FinalCtx, FinalData), Trailer)).
 
 verify_signature_packet(_, _, _, _, _, #decoder_ctx{skip_sig_check = true}) -> ok;
@@ -232,7 +232,7 @@ verify_signature_packet(PubKeyAlgo, HashAlgo, Hash, Signature, SigType, Context)
 read_mpi(Data) -> [Value] = read_mpi(Data, 1), Value.
 read_mpi(Data, Count) -> read_mpi(Data, Count, []).
 read_mpi(<<>>, 0, Acc) -> lists:reverse(Acc);
-read_mpi(<<Length:16/integer-big, Rest/binary>>, Count, Acc) ->
+read_mpi(<<Length:16, Rest/binary>>, Count, Acc) ->
 	ByteLen = (Length + 7) div 8,
 	<<Data:ByteLen/binary, Trailer/binary>> = Rest,
 	read_mpi(Trailer, Count - 1, [Data | Acc]).
@@ -245,11 +245,11 @@ decode_signed_subpackets(Packets, C) ->
 	NC = decode_signed_subpacket(Payload, C),
 	decode_signed_subpackets(Rest, NC#decoder_ctx{critical_subpacket = false}).
 
-decode_signed_subpacket(<<?SIG_CREATED_SUBPACKET, Timestamp:32/integer-big>>, C) ->
+decode_signed_subpacket(<<?SIG_CREATED_SUBPACKET, Timestamp:32>>, C) ->
 	C#decoder_ctx{sig_created = Timestamp};
-decode_signed_subpacket(<<?SIG_EXPIRATION_SUBPACKET, Timestamp:32/integer-big>>, C) ->
+decode_signed_subpacket(<<?SIG_EXPIRATION_SUBPACKET, Timestamp:32>>, C) ->
 	C#decoder_ctx{sig_expiration = Timestamp};
-decode_signed_subpacket(<<?KEY_EXPIRATION_SUBPACKET, Timestamp:32/integer-big>>, C) ->
+decode_signed_subpacket(<<?KEY_EXPIRATION_SUBPACKET, Timestamp:32>>, C) ->
 	C#decoder_ctx{key_expiration = Timestamp};
 decode_signed_subpacket(<<?ISSUER_SUBPACKET, Issuer:8/binary>>, C) -> C#decoder_ctx{issuer = Issuer};
 decode_signed_subpacket(<<?POLICY_URI_SUBPACKET, URI/binary>>, C) -> C#decoder_ctx{policy_uri = URI};

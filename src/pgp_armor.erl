@@ -40,7 +40,7 @@ encode_lines(<<Line:?LINE_LENGTH/binary, Rest/binary>>, Acc) ->
 	encode_lines(Rest, [$\n, Line | Acc]);
 encode_lines(ShortLine, Acc) -> lists:reverse(Acc, [ShortLine]).
 
-crc24b64(Body) -> base64:encode(<<(crc24(Body)):24/integer-big>>).
+crc24b64(Body) -> base64:encode(<<(crc24(Body)):24>>).
 
 crc24(Data) -> crc24(Data, ?CRC24_INIT).
 crc24(<<>>, Acc) -> Acc;
